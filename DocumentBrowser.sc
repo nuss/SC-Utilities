@@ -43,10 +43,9 @@ DocumentBrowser {
 		listView.value !? { doc = docs[listView.value] };
 		oldDocs = docs;
 		docs = Document.allDocuments.sort { | a , b | a.title < b.title}.copy;
-//		("the docs are:"+docs).postln;
-		listView.items = docs.collect(_.title);
+//		("the docs are:"+docs).postln
+		listView.items = docs.collect({ |d| if(d.isEdited, { "*"+d.title }, { d.title }) });
 //		("the list should be:"+listView.items).postln;
-		
 		docStack = docStack.reject({ | d | docs.indexOf(d).isNil});
 		newDocs = docs.difference(oldDocs);
 		if (newDocs.size !=0) { 
