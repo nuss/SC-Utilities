@@ -118,7 +118,7 @@ DocumentBrowser {
 		docStack = [current];
 		// wait for the dust to settle...
 		Routine({
-			0.5.wait;
+			dt.wait;
 			if (rects.notNil) {
 				#browserBounds, leftBounds, rightBounds, postBounds = rects;
 				window.bounds = browserBounds;
@@ -138,7 +138,7 @@ DocumentBrowser {
 				}
 			};
 				
-			dt = 1/30;
+//			dt = 1/30;
 			this.play;
 		}).play(AppClock);		
 		CmdPeriod.add(this);
