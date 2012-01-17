@@ -3,7 +3,7 @@ DocumentBrowser {
 	classvar <window, <widthViews, <listView;
 	classvar <browserBounds, <leftBounds, <rightBounds, <postBounds;
 	classvar <docs, <task;
-	classvar <>dt;
+	classvar <>dt=0.1;
 	classvar <docStack;
 
 	*pushDocStack { | doc |
@@ -142,51 +142,51 @@ DocumentBrowser {
 			this.play;
 		}).play(AppClock);		
 		CmdPeriod.add(this);
-		current.front;
+		current !? { current.front };
 	}
 	
 	*play { 
 		task = Routine({ 
 			var oldDocs, newDocs, bounds, widths, oldL, oldR, listener, doc, index;
-				loop { 
-				// check for added or deleted documents
-					if ( (docs != Document.allDocuments)) { 
+			loop { 
+			// check for added or deleted documents
+				if ( (docs != Document.allDocuments)) { 
+					this.getDocs;
+					docStack.last.front;
+					window.refresh;
+				} {
+					// check for renamed documents
+					if (listView.items != Document.allDocuments.collect(_.title) ) {
+						oldDocs = docs;
+						doc = docs[listView.value];
 						this.getDocs;
-						docStack.last.front;
+						if ( (index = docs.indexOf(doc)).notNil ) {
+							listView.value_(index) };
 						window.refresh;
-					} {
-						// check for renamed documents
-						if (listView.items != Document.allDocuments.collect(_.title) ) {
-							oldDocs = docs;
-							doc = docs[listView.value];
-							this.getDocs;
-							if ( (index = docs.indexOf(doc)).notNil ) {
-								listView.value_(index) };
-							window.refresh;
-						};
 					};
-					// check for change in document positioning
-					if ( (bounds != window.bounds) 
-						||	(widths != widthViews.collect(_.value)) 
-						|| 	(postBounds != Document.listener.bounds) ) {
-						bounds = window.bounds;
-						widths = widthViews.collect(_.value);
-						oldL = leftBounds;
-						oldR = rightBounds;
-						this.determineBounds;
-						listener = Document.listener;
-						docs.do {| d|
-							if (d.bounds == oldL) { 
-								d.bounds_(leftBounds)
-							} {
-								if (d.bounds == oldR) {
-									d.bounds_(rightBounds);
-								}
+				};
+				// check for change in document positioning
+				if ( (bounds != window.bounds) 
+					||	(widths != widthViews.collect(_.value)) 
+					|| 	(postBounds != Document.listener.bounds) ) {
+					bounds = window.bounds;
+					widths = widthViews.collect(_.value);
+					oldL = leftBounds;
+					oldR = rightBounds;
+					this.determineBounds;
+					listener = Document.listener;
+					docs.do {| d|
+						if (d.bounds == oldL) { 
+							d.bounds_(leftBounds)
+						} {
+							if (d.bounds == oldR) {
+								d.bounds_(rightBounds);
 							}
-						}					
-					};
-					dt.wait 
-				} 
+						}
+					}					
+				};
+				dt.wait 
+			} 
 		});
 		task.play(AppClock);
 		CmdPeriod.add(this);
