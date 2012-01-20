@@ -111,7 +111,7 @@ DocumentBrowser {
 	}		
 	
 	*gui {	 
-		var rects, t, h, offset, current, listener = Document.listener;
+		var rects, t, h, offset, current;
 		rects = Archive.global.at(\documentBrowserRects);
 		this.makeBrowserWindow;
 		current = Document.current;
@@ -129,16 +129,15 @@ DocumentBrowser {
 			};
 			docs = docStack = [Document.listener];
 			this.getDocs;
-	
+			
 			docs.do { | doc |
-				if (doc!= listener) { 
+				if (doc != Document.listener) { 
 					doc.bounds_(leftBounds) 
 				} {
 					doc.bounds_(postBounds? rightBounds);
 				}
 			};
 				
-//			dt = 1/30;
 			this.play;
 		}).play(AppClock);		
 		CmdPeriod.add(this);
@@ -146,10 +145,10 @@ DocumentBrowser {
 	}
 	
 	*play { 
+		var oldDocs, newDocs, bounds, widths, oldL, oldR, listener, doc, index;
 		task = Routine({ 
-			var oldDocs, newDocs, bounds, widths, oldL, oldR, listener, doc, index;
 			loop { 
-			// check for added or deleted documents
+				// check for added or deleted documents
 				if ( (docs != Document.allDocuments)) { 
 					this.getDocs;
 					docStack.last.front;
