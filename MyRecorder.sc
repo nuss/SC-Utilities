@@ -6,13 +6,9 @@ MyRecorder {
 	classvar stopWatch;
 	classvar recSynth;
 
-	// *new { |server, configName, numChannels = 2, bufSize = 262144|
-	// 	^super.newCopyArgs(server, configName, numChannels, bufSize).init;
-	// }
-
 	*setSynthDef { |numChannels = 2|
 		this.recorderNChans_(numChannels);
-		SynthDef("myRecorder", {arg bufnum;
+		SynthDef(\myRecorder, { |bufnum|
 			DiskOut.ar(bufnum, In.ar(0, numChannels));
 		}).add;
 	}
@@ -137,22 +133,6 @@ MyRecorder {
 			recSynth = Synth.tail(nil, \myRecorder, [\bufnum, this.recBuffer.bufnum]);
 			timeRecRoutine = fork ({
 				inf.do{ |i|
-					// case
-					// { i % 100 == 0 } {
-					// 	start.s = start.s + 1;
-					// 	start.ms = 0;
-					// }
-					// { i % (100 * 60) == 0 } {
-					// 	start.m = start.m + 1;
-					// 	start.s = 0;
-					// }
-					// { i % (100 * 60 * 60) == 0 } {
-					// 	start.h = start.h + 1;
-					// 	start.m = 0;
-					// }
-					//
-					//
-					//
 					stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
 					1.wait;
 				}
