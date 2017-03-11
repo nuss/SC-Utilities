@@ -49,9 +49,7 @@ MyRecorder {
 				})
 			;
 
-			nChansText = StaticText(window)
-				.string_("n-ch:")
-			;
+			nChansText = StaticText(window).string_("n-ch:");
 			nChans = NumberBox(window)
 				.value_(recorderNChans ? 2)
 				.clipLo_(1)
@@ -60,9 +58,7 @@ MyRecorder {
 					this.recorderNChans_(n.value.asInteger);
 				})
 			;
-			bufSizeText = StaticText(window)
-				.string_("power of 2 buffer size:")
-			;
+			bufSizeText = StaticText(window).string_("power of 2 buffer size:");
 			bufSize = NumberBox(window)
 				.value_(recorderBufSize ? 262144)
 				.clipLo_(512)
@@ -71,9 +67,7 @@ MyRecorder {
 					this.recorderBufSize_(n.value);
 				})
 			;
-			recordNameText = StaticText(window)
-				.string_("name:")
-			;
+			recordNameText = StaticText(window).string_("name:");
 			recordName = TextField(window)
 				.string_(this.defaultName)
 				.action_({ |t|
@@ -81,9 +75,7 @@ MyRecorder {
 				})
 			;
 
-			pathText = StaticText(window)
-				.string_("store file in:")
-			;
+			pathText = StaticText(window).string_("store file in:");
 			path = TextField(window)
 				.string_(this.storageLoc)
 				.action_({ |t|
@@ -124,19 +116,21 @@ MyRecorder {
 	*record { |server, name, numChannels = 2, bufSize = 262144, recordingPath|
 		var date;
 
-		server.bind {
-			var time;
-			recBuffer = Buffer.alloc(server, bufSize, numChannels);
-			server.sync;
-			date = Date.getDate;
-			recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);
-			recSynth = Synth.tail(nil, \myRecorder, [\bufnum, this.recBuffer.bufnum]);
-			timeRecRoutine = fork ({
-				inf.do{ |i|
-					stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
-					1.wait;
-				}
-			}, AppClock);
+		server.waitForBoot {
+			server.bind {
+				var time;
+				recBuffer = Buffer.alloc(server, bufSize, numChannels);
+				server.sync;
+				date = Date.getDate;
+				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);
+				recSynth = Synth.tail(nil, \myRecorder, [\bufnum, this.recBuffer.bufnum]);
+				timeRecRoutine = fork ({
+					inf.do{ |i|
+						stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
+						1.wait;
+					}
+				}, AppClock);
+			}
 		}
 	}
 
