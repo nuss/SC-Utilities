@@ -1,20 +1,24 @@
 MyRecorder {
-	classvar <window, <>recorderNChans, <>recorderBufSize, <>defaultName = "";
+	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "";
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
 	classvar stopWatch;
 	classvar recSynth;
 
-	*setSynthDef { |numChannels = 2|
-		this.recorderNChans_(numChannels);
-		SynthDef(\myRecorder, { |bufnum|
-			DiskOut.ar(bufnum, In.ar(0, numChannels));
+	*setSynthDef {
+		SynthDef(\myRecorder, { |in, bufnum|
+			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
 		}).add;
 	}
 
+	*recorderNChans_ { |numChannels|
+		recorderNChans = numChannels.asInteger;
+		this.setSynthDef;
+	}
+
 	*front {
-		var myServer, nChansText, nChans;
+		var myServer, nChansText, nChans, chansOffsetText, chansOffset;
 		var bufSizeText, bufSize;
 		var recordNameText, recordName;
 		var pathText, path;
@@ -49,9 +53,19 @@ MyRecorder {
 				})
 			;
 
+			chansOffsetText = StaticText(window).string_("ch. offset");
+			chansOffset = NumberBox(window)
+				.value_(this.channelOffset)
+				.clipLo_(0)
+				.step_(1)
+				.action_({ |ch|
+					this.channelOffset_(ch.value.asInteger);
+				})
+			;
+
 			nChansText = StaticText(window).string_("n-ch:");
 			nChans = NumberBox(window)
-				.value_(recorderNChans ? 2)
+				.value_(this.recorderNChans)
 				.clipLo_(1)
 				.step_(1)
 				.action_({ |n|
@@ -93,6 +107,7 @@ MyRecorder {
 							this.record(
 								myServers[myServer.value],
 								recordName.string,
+								channelOffset.value.asInteger,
 								nChans.value.asInteger,
 								bufSize.value,
 								path.string ? storageLoc
@@ -105,7 +120,7 @@ MyRecorder {
 
 			window.layout_(VLayout(
 				HLayout(stopWatch),
-				HLayout(myServer, nChansText, nChans, bufSizeText, bufSize, recordNameText, recordName),
+				HLayout(myServer, chansOffsetText, chansOffset, nChansText, nChans, bufSizeText, bufSize, recordNameText, recordName),
 				HLayout(pathText, path, startStop)
 			));
 		} {
@@ -113,17 +128,18 @@ MyRecorder {
 		}
 	}
 
-	*record { |server, name, numChannels = 2, bufSize = 262144, recordingPath|
+	*record { |server, name, channelOffset, numChannels = 2, bufSize = 262144, recordingPath|
 		var date;
 
 		server.waitForBoot {
 			server.bind {
 				var time;
+
 				recBuffer = Buffer.alloc(server, bufSize, numChannels);
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);
-				recSynth = Synth.tail(nil, \myRecorder, [\bufnum, this.recBuffer.bufnum]);
+				recSynth = Synth.tail(nil, \myRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
 						stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
