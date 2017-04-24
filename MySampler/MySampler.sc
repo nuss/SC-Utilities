@@ -1,13 +1,13 @@
 MySampler {
 	classvar <all, <synthDescLib;
-	var <name, <clock, <tempo, <beatsPerBar, <numBuffers, <server, <inBus;
+	var <name, <clock, <tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, buffersLoaded = false;
 	var recorder, <isPlaying = false;
 	var <synthDescLib;
 	var nameString;
 
-	*new { |name, clock, tempo=1, beatsPerBar=4, numBuffers=5, server|
-		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBuffers).init;
+	*new { |name, clock, tempo=1, beatsPerBar=4, numBars=1, numBuffers=5, server|
+		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBars, numBuffers).init;
 	}
 
 	init {
@@ -34,7 +34,7 @@ MySampler {
 				buffers = Buffer.allocConsecutive(
 					numBuffers,
 					server,
-					(server.sampleRate * beatsPerBar).asInteger
+					(server.sampleRate * beatsPerBar * numBars).asInteger
 				);
 				server.sync;
 				buffersLoaded = true;
@@ -151,6 +151,28 @@ MySampler {
 				'set tempo',
 				{ |cv| tempo = cv.value }
 			)
+		}
+	}
+
+	allocateBuffers { |numBuffers|
+		// pause sampler first
+		if (CVCenter.at((nameString + "on/off").asSymbol).notNil) {
+			CVCenter.at((nameString + "on/off").asSymbol).input_(0)
+		} {
+			Error("The sampler could not be paused. Did you accidently remove the widget '" ++ nameString + "on/off'?").throw;
+		};
+		buffers.do{ |buf| buf.close({ |b| b.freeMsg })};
+		buffers = nil;
+		// allocation is asynchronous
+		server.bind {
+			buffers = Buffer.allocConsecutive(
+				numBuffers,
+				server,
+				(server.sampleRate * beatsPerBar * numBars).asInteger
+			);
+			server.sync;
+			// resume sampler
+			CVCenter.at((nameString + "on/off").asSymbol).input_(1);
 		}
 	}
 
