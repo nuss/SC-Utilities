@@ -36,6 +36,7 @@ MyMetronome {
 			"name: %\n".postf(name);
 			server.sync;
 			pdef = this.schedule;
+			pdef.postcs;
 			pdef.quant_([beatsPerBar, 0, 0, 1]).play(clock);
 			// add a CVWidget for pausing/resuming the metronome
 			CVCenter.use(
@@ -67,19 +68,8 @@ MyMetronome {
 			tabName = name.asSymbol;
 		};
 		if (post) {
+			"metronome post".postln;
 			^Pdef(name.asSymbol,
-				Pbind(
-					\synthLib, SynthDescLib.all[\metronomes],
-					\instrument, name.asSymbol,
-					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
-					\dur, 1,
-					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
-					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
-					\out, out
-				)
-			)
-		} {
-			^Pdef(name,
 				Pbind(
 					\synthLib, SynthDescLib.all[\metronomes],
 					\instrument, name.asSymbol,
@@ -89,6 +79,19 @@ MyMetronome {
 					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
 					\out, out,
 					\beat, Pfunc {  "metronome" + name + "beat:" + clock.beatInBar }.trace
+				)
+			)
+		} {
+			"metronome post not".postln;
+			^Pdef(name,
+				Pbind(
+					\synthLib, SynthDescLib.all[\metronomes],
+					\instrument, name.asSymbol,
+					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
+					\dur, 1,
+					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
+					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
+					\out, out
 				)
 			)
 		}

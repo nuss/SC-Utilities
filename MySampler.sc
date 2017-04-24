@@ -1,7 +1,7 @@
 MySampler {
 	classvar <all, <synthDescLib;
 	var <name, <clock, <tempo, <beatsPerBar, <numBuffers, <server, <inBus;
-	var <buffers, <recorder, <metronome;
+	var <buffers, <recorder, <metronome, buffersLoaded = false;
 	var recorder, <isPlaying = false;
 	var <synthDescLib;
 	var nameString;
@@ -30,14 +30,23 @@ MySampler {
 
 		// boot the server before proceeding (if the server isn't already booted)
 		server.waitForBoot {
-			buffers = Buffer.allocConsecutive(
-				numBuffers,
-				server,
-				(server.sampleRate * beatsPerBar).asInteger
-			);
-			recorder = NodeProxy(server, \audio, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
+			server.bind {
+				buffers = Buffer.allocConsecutive(
+					numBuffers,
+					server,
+					(server.sampleRate * beatsPerBar).asInteger
+				);
+				server.sync;
+				buffersLoaded = true;
+			};
+			recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
+		}
+	}
+
+	start {
+		if (buffersLoaded) {
 			recorder[0] = {
-				var soundIn = SoundIn.ar(\in.kr(inBus), \inputLevel.kr(0.5));
+				var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
 				BufWr.ar(
 					soundIn,
 					\bufnum.kr(0),
@@ -48,6 +57,7 @@ MySampler {
 				// play silently
 				0.0;
 			};
+			"recorder: %\n".postf(recorder);
 			this.schedule;
 			CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
 			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
@@ -59,76 +69,88 @@ MySampler {
 				{ |cv| if (cv.value == 1) { this.resume } { this.pause }}
 			);
 			this.addMetronome(out: 0, numChannels: 1, amp: 0);
+
+			recorder.play;
+			isPlaying = true;
+		} {
+			"The sampler has not yet been initialized completely!".warn
 		}
 	}
 
-	start {
-		recorder.play;
-		isPlaying = true;
-	}
-
 	stop {
-		recorder.stop;
-		isPlaying = false;
+		recorder !? {
+			recorder.stop;
+			isPlaying = false;
+		}
 	}
 
 	pause {
-		recorder.pause;
+		recorder !? {
+			recorder.pause;
+		}
 	}
 
 	resume {
-		recorder.resume;
+		recorder !? {
+			recorder.resume;
+		}
 	}
 
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
-		"beatsPerBar: %\n".postf(beatsPerBar);
-		if (post) {
-			recorder[1] = \set -> Pbind(
-				\dur, beatsPerBar,
-				\in, CVCenter.use(
-					(nameString + "in").asSymbol,
-					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
-					tab: name
-				),
-				\inputLevel, CVCenter.use(
-					(nameString + "level").asSymbol,
-					\amp,
-					0.5,
-					name
-				),
-				\bufnum, Pseq(buffers.collect(_.bufnum), inf),
-				\tempo, CVCenter.use(
-					nameString + "tempo",
-					#[0.2, 4, \lin],
-					tempo,
-					name
-				),
-				\beat, Pfunc { nameString + "beat:" + clock.beatInBar }.trace
-			);
-
-		} {
-			recorder[1] = \set -> Pbind(
-				\dur, beatsPerBar,
-				\in, CVCenter.use(
-					(nameString + "in").asSymbol,
-					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
-					tab: name
-				),
-				\inputLevel, CVCenter.use(
-					(nameString + "level").asSymbol,
-					\amp,
-					0.5,
-					name
-				),
-				\bufnum, Pseq(buffers.collect(_.bufnum), inf),
-				\tempo, CVCenter.use(
-					nameString + "tempo",
-					#[0.2, 4, \lin],
-					tempo,
-					name
-				)
-			);
+		recorder !? {
+			"beatsPerBar: %\n".postf(beatsPerBar);
+			if (post) {
+				recorder[1] = \set -> Pbind(
+					\dur, beatsPerBar,
+					\in, CVCenter.use(
+						(nameString + "in").asSymbol,
+						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
+						tab: name
+					),
+					\inputLevel, CVCenter.use(
+						(nameString + "level").asSymbol,
+						\amp,
+						0.5,
+						name
+					),
+					\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+					\tempo, CVCenter.use(
+						nameString + "tempo",
+						#[1, 4, \lin],
+						tempo,
+						name
+					),
+					\beat, Pfunc { nameString + "beat:" + clock.beatInBar }.trace
+				);
+			} {
+				recorder[1] = \set -> Pbind(
+					\dur, beatsPerBar,
+					\in, CVCenter.use(
+						(nameString + "in").asSymbol,
+						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
+						tab: name
+					),
+					\inputLevel, CVCenter.use(
+						(nameString + "level").asSymbol,
+						\amp,
+						0.5,
+						name
+					),
+					\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+					\tempo, CVCenter.use(
+						nameString + "tempo",
+						#[1, 4, \lin],
+						tempo,
+						name
+					)
+				);
+			};
+			CVCenter.addActionAt(
+				(nameString + "tempo").asSymbol,
+				'set tempo',
+				{ |cv| tempo = cv.value }
+			)
 		}
 	}
 
