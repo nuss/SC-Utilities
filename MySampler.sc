@@ -1,29 +1,32 @@
 MySampler {
 	classvar <all, <synthDescLib;
-	var <clock, <tempo, <beatsPerBar, <numBuffers, <server, <inBus;
-	var <buffers;
+	var <name, <clock, <tempo, <beatsPerBar, <numBuffers, <server, <inBus;
+	var <buffers, <recorder, <metronome;
 	var recorder, <isPlaying = false;
 	var <synthDescLib;
-	var cvcenterTabLabel, cvcenterWdgtBaseName;
+	var nameString;
 
-	*new { |clock, tempo=1, beatsPerBar=4, numBuffers=5, server|
-		^super.newCopyArgs(clock, tempo, beatsPerBar, numBuffers).init;
+	*new { |name, clock, tempo=1, beatsPerBar=4, numBuffers=5, server|
+		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBuffers).init;
 	}
 
 	init {
-		all ?? { all = [] };
-		all = all.add(this);
-
-		cvcenterTabLabel = ("sampler" + (all.indexOf(this) + 1)).asSymbol;
-		cvcenterWdgtBaseName = ("sampler" ++ (all.indexOf(this) + 1));
+		all ?? { all = () };
+		if (name.isNil) {
+			name = ("sampler" + (all.size + 1)).asSymbol
+		} {
+			if (all.includesKey(name.asSymbol)) {
+				Error("A sampler under the given name already exists").throw;
+			}
+		};
+		all = all.put(name.asSymbol, this);
+		nameString = name.asString;
 
 		server ?? { server = Server.default };
-		"clock: %\n".postf(clock);
 		clock ?? {
 			// create a new clock, compensating latency
 			clock = TempoClock(tempo, 0, server.latency.neg);
 		};
-		"clock tempo: %\n".postf(clock.tempo);
 
 		// boot the server before proceeding (if the server isn't already booted)
 		server.waitForBoot {
@@ -45,26 +48,17 @@ MySampler {
 				// play silently
 				0.0;
 			};
-			recorder[1] = \set -> Pbind(
-				\dur, beatsPerBar,
-				\in, CVCenter.use(
-					(cvcenterWdgtBaseName + "in").asSymbol,
-					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
-					tab: cvcenterTabLabel
-				),
-				\inputLevel, CVCenter.use(
-					(cvcenterWdgtBaseName + "level").asSymbol,
-					\amp,
-					tab: cvcenterTabLabel
-				),
-				\bufnum, Pseq(buffers.collect(_.bufnum), inf),
-				\tempo, CVCenter.use(
-					cvcenterWdgtBaseName + "tempo",
-					#[0.2, 4, \lin],
-					value: tempo,
-					tab: cvcenterTabLabel
-				)
-			)
+			this.schedule;
+			CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
+			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
+			CVCenter.cvWidgets[(nameString + "on/off").asSymbol]
+			.setMidiMode(0).setSoftWithin(0);
+			CVCenter.addActionAt(
+				(nameString + "on/off").asSymbol,
+				"pause/resume",
+				{ |cv| if (cv.value == 1) { this.resume } { this.pause }}
+			);
+			this.addMetronome(out: 0, numChannels: 1, amp: 0);
 		}
 	}
 
@@ -86,28 +80,70 @@ MySampler {
 		recorder.resume;
 	}
 
-	// an acoustic metronome
-	metronome { |out=0, numChannels=1, baseAmp=0.2|
-		server.bind {
-			SynthDescLib.at(\mySampler) ?? {
-				// store the metronome in a separate SynthDescLib in order to avoid name clashes
-				synthDescLib = SynthDescLib(\mySampler, [server]);
-			};
-			SynthDef(\metronome, {
-				var env = EnvGen.ar(Env.perc(0.001, 0.1), doneAction: 2);
-				Out.ar(\out.kr(out), SinOsc.ar(\freq.kr(330) ! numChannels, mul: env * \baseAmp.kr * \amp.kr(1)));
-			}).add(\mySampler);
-			server.sync;
-			Pdef(("metronome" ++ (all.indexOf(this) + 1)).asSymbol,
-				Pbind(
-					\synthLib, SynthDescLib.all[\mySampler],
-					\instrument, \metronome,
-					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
-					\dur, 1,
-					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
-					\amp, CVCenter.use(cvcenterWdgtBaseName + "metroAmp", value: 1, tab: cvcenterTabLabel)
+	// schedule sampling, post current off beat if post == true
+	schedule { |post=false|
+		"beatsPerBar: %\n".postf(beatsPerBar);
+		if (post) {
+			recorder[1] = \set -> Pbind(
+				\dur, beatsPerBar,
+				\in, CVCenter.use(
+					(nameString + "in").asSymbol,
+					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
+					tab: name
+				),
+				\inputLevel, CVCenter.use(
+					(nameString + "level").asSymbol,
+					\amp,
+					0.5,
+					name
+				),
+				\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+				\tempo, CVCenter.use(
+					nameString + "tempo",
+					#[0.2, 4, \lin],
+					tempo,
+					name
+				),
+				\beat, Pfunc { nameString + "beat:" + clock.beatInBar }.trace
+			);
+
+		} {
+			recorder[1] = \set -> Pbind(
+				\dur, beatsPerBar,
+				\in, CVCenter.use(
+					(nameString + "in").asSymbol,
+					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
+					tab: name
+				),
+				\inputLevel, CVCenter.use(
+					(nameString + "level").asSymbol,
+					\amp,
+					0.5,
+					name
+				),
+				\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+				\tempo, CVCenter.use(
+					nameString + "tempo",
+					#[0.2, 4, \lin],
+					tempo,
+					name
 				)
-			).play(clock);
-		};
+			);
+		}
+	}
+
+	// an acoustic metronome
+	addMetronome { |out, numChannels, amp|
+		metronome ?? {
+			metronome = MyMetronome(
+				name, clock, tempo, beatsPerBar, server,
+				name, out, numChannels, amp
+			)
+		}
+	}
+
+	removeMetronome {
+		metronome.clear;
+		metronome = nil;
 	}
 }
