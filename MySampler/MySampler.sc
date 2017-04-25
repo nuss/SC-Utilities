@@ -121,7 +121,7 @@ MySampler {
 						tempo,
 						name
 					),
-					\beat, Pfunc { nameString + "beat:" + clock.beatInBar }.trace
+					\trace, Pfunc { |e| nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
 				);
 			} {
 				recorder[1] = \set -> Pbind(

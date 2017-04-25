@@ -36,8 +36,7 @@ MyMetronome {
 			"name: %\n".postf(name);
 			server.sync;
 			pdef = this.schedule;
-			pdef.postcs;
-			pdef.quant_([beatsPerBar, 0, 0, 1]).play(clock);
+			pdef.play(clock);
 			// add a CVWidget for pausing/resuming the metronome
 			CVCenter.use(
 				(name.asString + "metro on/off").asSymbol,
@@ -78,9 +77,9 @@ MyMetronome {
 					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
 					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
 					\out, out,
-					\beat, Pfunc {  "metronome" + name + "beat:" + clock.beatInBar }.trace
+					\trace, Pfunc {  "metronome" + name + "beat:" + clock.beatInBar }.trace
 				)
-			)
+			).quant_([beatsPerBar, 0, 0, 1])
 		} {
 			"metronome post not".postln;
 			^Pdef(name,
@@ -93,7 +92,7 @@ MyMetronome {
 					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
 					\out, out
 				)
-			)
+			).quant_([beatsPerBar, 0, 0, 1])
 		}
 	}
 }
