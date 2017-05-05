@@ -1,10 +1,10 @@
-MySamplerGui {
+SNSamplerGui {
 	classvar <all;
 	var <sampler, <window, left, top, width, height;
 	var <startStopButton, <pauseResumeButton, <tempoKnob, <inputLevelKnob, <beatsPerBarNB, <numBufsNB;
 
 	*new { |sampler, window, left, top, width, height|
-		if (sampler.isNil or:{ sampler.class !== MySampler}) {
+		if (sampler.isNil or:{ sampler.class !== SNSampler}) {
 			Error("A valid MySampler must be provided as first argument to MySamplerGui.new!").throw;
 		};
 		^super.newCopyArgs(sampler, window, left, top, width, height).init;
@@ -63,7 +63,9 @@ MySamplerGui {
 		});
 
 		window.layout = HLayout(
+			VLayout(startStopButton, pauseResumeButton)
+		);
 
-		)
+		window.front;
 	}
 }

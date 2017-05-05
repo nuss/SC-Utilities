@@ -1,4 +1,4 @@
-MySampler {
+SNSampler {
 	classvar <all, <synthDescLib;
 	var <name, <clock, <tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, buffersLoaded = false;
@@ -57,7 +57,6 @@ MySampler {
 				// play silently
 				0.0;
 			};
-			"recorder: %\n".postf(recorder);
 			this.schedule;
 			CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
 			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
@@ -102,7 +101,7 @@ MySampler {
 			"beatsPerBar: %\n".postf(beatsPerBar);
 			if (post) {
 				recorder[1] = \set -> Pbind(
-					\dur, beatsPerBar,
+					\dur, beatsPerBar * numBars,
 					\in, CVCenter.use(
 						(nameString + "in").asSymbol,
 						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
@@ -121,11 +120,11 @@ MySampler {
 						tempo,
 						name
 					),
-					\trace, Pfunc { |e| nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
+					\trace, Pfunc { |e| "beatsPerBar:" + e.dur ++ "," + nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
 				);
 			} {
 				recorder[1] = \set -> Pbind(
-					\dur, beatsPerBar,
+					\dur, beatsPerBar * numBars,
 					\in, CVCenter.use(
 						(nameString + "in").asSymbol,
 						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
@@ -176,10 +175,25 @@ MySampler {
 		}
 	}
 
+	zero { |bufnum|
+		var buffer;
+
+		if (bufnum.isNil) {
+			buffers.do(_.zero);
+		} {
+			buffer = buffers.detect{ |b| b.bufnum == bufnum };
+			if (buffer.notNil) {
+				buffer.zero({ "buffer % zeroed\n".postf(bufnum) });
+			} {
+				"buffer at bufnum % does not exist!\n".format(bufnum).warn;
+			}
+		}
+	}
+
 	// an acoustic metronome
 	addMetronome { |out, numChannels, amp|
 		metronome ?? {
-			metronome = MyMetronome(
+			metronome = SNMetronome(
 				name, clock, tempo, beatsPerBar, server,
 				name, out, numChannels, amp
 			)

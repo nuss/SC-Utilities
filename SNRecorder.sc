@@ -1,4 +1,4 @@
-MyRecorder {
+SNRecorder {
 	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "";
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;

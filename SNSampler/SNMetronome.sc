@@ -1,4 +1,4 @@
-MyMetronome {
+SNMetronome {
 	classvar <all;
 	var <name, <clock, <tempo, <beatsPerBar, <server;
 	var pdef;
@@ -22,7 +22,6 @@ MyMetronome {
 			clock = TempoClock(tempo, 0, server.latency.neg);
 		};
 
-		"all: %, clock: %\n".postf(all, clock);
 		server.bind {
 			SynthDescLib.at(\metronomes) ?? {
 				// store the metronome in a separate SynthDescLib in order to avoid name clashes
