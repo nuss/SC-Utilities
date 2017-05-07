@@ -1,13 +1,13 @@
 SNSampler {
 	classvar <all, <synthDescLib;
 	var <name, <clock, <tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
-	var <buffers, <recorder, <metronome, buffersLoaded = false;
+	var <buffers, <recorder, <metronome, <buffersAllocated = false;
 	var recorder, <isPlaying = false;
 	var <synthDescLib;
 	var nameString;
 
 	*new { |name, clock, tempo=1, beatsPerBar=4, numBars=1, numBuffers=5, server|
-		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBars, numBuffers).init;
+		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBars, numBuffers, server).init;
 	}
 
 	init {
@@ -37,40 +37,49 @@ SNSampler {
 					(server.sampleRate * beatsPerBar * numBars).asInteger
 				);
 				server.sync;
-				buffersLoaded = true;
-			};
-			recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
+				recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
+				server.sync;
+				buffersAllocated = true;
+				isPlaying = recorder.isPlaying;
+			}
 		}
 	}
 
 	start {
-		if (buffersLoaded) {
-			recorder[0] = {
-				var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
-				BufWr.ar(
-					soundIn,
-					\bufnum.kr(0),
-					// Phasor will ramp from start to end and then jump back to start
-					// if tempo != 1 we have to move through the buffer at a different rate
-					Phasor.ar(0, BufRateScale.kr(\bufnum.kr(0), tempo), 0, BufFrames.kr(\bufnum.kr(0)))
+		if (buffersAllocated) {
+			if (isPlaying.not) {
+				recorder[0] = {
+					var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
+					BufWr.ar(
+						soundIn,
+						\bufnum.kr(0),
+						// Phasor will ramp from start to end and then jump back to start
+						// if tempo != 1 we have to move through the buffer at a different rate
+						Phasor.ar(0, BufRateScale.kr(\bufnum.kr(0), tempo), 0, BufFrames.kr(\bufnum.kr(0)))
+					);
+					// play silently
+					Silent.ar;
+				};
+				this.schedule;
+				CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
+				// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
+				CVCenter.cvWidgets[(nameString + "on/off").asSymbol]
+				.setMidiMode(0).setSoftWithin(0);
+				CVCenter.addActionAt(
+					(nameString + "on/off").asSymbol,
+					"pause/resume",
+					{ |cv| if (cv.value == 1) {
+						this.resume;
+						this.schedule;
+					} { this.pause}}
 				);
-				// play silently
-				0.0;
-			};
-			this.schedule;
-			CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
-			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
-			CVCenter.cvWidgets[(nameString + "on/off").asSymbol]
-			.setMidiMode(0).setSoftWithin(0);
-			CVCenter.addActionAt(
-				(nameString + "on/off").asSymbol,
-				"pause/resume",
-				{ |cv| if (cv.value == 1) { this.resume } { this.pause }}
-			);
-			this.addMetronome(out: 0, numChannels: 1, amp: 0);
+				this.addMetronome(out: 0, numChannels: 1, amp: 0);
 
-			recorder.play;
-			isPlaying = true;
+				recorder.play;
+				isPlaying = recorder.isPlaying;
+			} {
+				this.resume;
+			}
 		} {
 			"The sampler has not yet been initialized completely!".warn
 		}
@@ -79,7 +88,7 @@ SNSampler {
 	stop {
 		recorder !? {
 			recorder.stop;
-			isPlaying = false;
+			isPlaying = recorder.isPlaying;
 		}
 	}
 
@@ -91,6 +100,8 @@ SNSampler {
 
 	resume {
 		recorder !? {
+			// make sure sampler and metronome are in sync
+			this.schedule;
 			recorder.resume;
 		}
 	}
@@ -98,7 +109,6 @@ SNSampler {
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
 		recorder !? {
-			"beatsPerBar: %\n".postf(beatsPerBar);
 			if (post) {
 				recorder[1] = \set -> Pbind(
 					\dur, beatsPerBar * numBars,
@@ -162,6 +172,7 @@ SNSampler {
 		};
 		buffers.do{ |buf| buf.close({ |b| b.freeMsg })};
 		buffers = nil;
+		buffersAllocated = false;
 		// allocation is asynchronous
 		server.bind {
 			buffers = Buffer.allocConsecutive(
@@ -170,6 +181,7 @@ SNSampler {
 				(server.sampleRate * beatsPerBar * numBars).asInteger
 			);
 			server.sync;
+			buffersAllocated = true;
 			// resume sampler
 			CVCenter.at((nameString + "on/off").asSymbol).input_(1);
 		}
@@ -190,6 +202,18 @@ SNSampler {
 		}
 	}
 
+	clear {
+		recorder.clear;
+		metronome !? {
+			Pdef(metronome.name.asSymbol).clear;
+			metronome.clear;
+		};
+		buffers.do({ |b| b.close(_.free) });
+		buffersAllocated = false;
+		CVCenter.removeAtTab(name);
+		all[all.findKeyForValue(this)] = nil;
+	}
+
 	// an acoustic metronome
 	addMetronome { |out, numChannels, amp|
 		metronome ?? {
@@ -203,5 +227,10 @@ SNSampler {
 	removeMetronome {
 		metronome.clear;
 		metronome = nil;
+	}
+
+	// run unit tests
+	*test {
+		TestSNSampler.runTest("TestSNSampler:test_init");
 	}
 }

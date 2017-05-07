@@ -6,10 +6,14 @@ SNRecorder {
 	classvar stopWatch;
 	classvar recSynth;
 
-	*setSynthDef {
-		SynthDef(\myRecorder, { |in, bufnum|
+	*setSynthDef { |server|
+		SynthDescLib.at(\snSynthDefs) ?? {
+			// store the synth in a separate SynthDescLib in order to avoid name clashes
+			SynthDescLib(\snSynthDefs, [server]);
+		};
+		SynthDef(\snRecorder, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
-		}).add;
+		}).add(\snSynthDefs);
 	}
 
 	*recorderNChans_ { |numChannels|
@@ -26,96 +30,92 @@ SNRecorder {
 		var myServers = Server.all.asArray;
 		var myServerNames = myServers.collect(_.name);
 
-		SynthDescLib.global[\myRecorder] ?? {
-			this.setSynthDef;
-		};
-
 		if (window.isNil or: {
 			window.isClosed
 		}) {
 			window = Window("recorder", Rect(0, 0, 600, 200), false).front;
 
 			stopWatch = StaticText(window)
-				.background_(Color(0.1, 0.1, 0.1))
-				.stringColor_(Color.green)
-				.string_("WAITING")
-				.align_(\center)
-				.font_(Font("Andale Mono", 100))
+			.background_(Color(0.1, 0.1, 0.1))
+			.stringColor_(Color.green)
+			.string_("WAITING")
+			.align_(\center)
+			.font_(Font("Andale Mono", 100))
 			;
 
 			myServer = PopUpMenu(window)
-				.items_(myServerNames)
-				.value_(myServers.indexOf(this.recServer) ?? {
-					myServers.indexOf(Server.default)
-				})
-				.action_({ |p|
-					this.recServer_(p.item);
-				})
+			.items_(myServerNames)
+			.value_(myServers.indexOf(this.recServer) ?? {
+				myServers.indexOf(Server.default)
+			})
+			.action_({ |p|
+				this.recServer_(p.item);
+			})
 			;
 
 			chansOffsetText = StaticText(window).string_("ch. offset");
 			chansOffset = NumberBox(window)
-				.value_(this.channelOffset)
-				.clipLo_(0)
-				.step_(1)
-				.action_({ |ch|
-					this.channelOffset_(ch.value.asInteger);
-				})
+			.value_(this.channelOffset)
+			.clipLo_(0)
+			.step_(1)
+			.action_({ |ch|
+				this.channelOffset_(ch.value.asInteger);
+			})
 			;
 
 			nChansText = StaticText(window).string_("n-ch:");
 			nChans = NumberBox(window)
-				.value_(this.recorderNChans)
-				.clipLo_(1)
-				.step_(1)
-				.action_({ |n|
-					this.recorderNChans_(n.value.asInteger);
-				})
+			.value_(this.recorderNChans)
+			.clipLo_(1)
+			.step_(1)
+			.action_({ |n|
+				this.recorderNChans_(n.value.asInteger);
+			})
 			;
 			bufSizeText = StaticText(window).string_("power of 2 buffer size:");
 			bufSize = NumberBox(window)
-				.value_(recorderBufSize ? 262144)
-				.clipLo_(512)
-				.step_(1)
-				.action_({ |n|
-					this.recorderBufSize_(n.value);
-				})
+			.value_(recorderBufSize ? 262144)
+			.clipLo_(512)
+			.step_(1)
+			.action_({ |n|
+				this.recorderBufSize_(n.value);
+			})
 			;
 			recordNameText = StaticText(window).string_("name:");
 			recordName = TextField(window)
-				.string_(this.defaultName)
-				.action_({ |t|
-					this.defaultName_(t.string);
-				})
+			.string_(this.defaultName)
+			.action_({ |t|
+				this.defaultName_(t.string);
+			})
 			;
 
 			pathText = StaticText(window).string_("store file in:");
 			path = TextField(window)
-				.string_(this.storageLoc)
-				.action_({ |t|
-					this.storageLoc_(t.string);
-				})
+			.string_(this.storageLoc)
+			.action_({ |t|
+				this.storageLoc_(t.string);
+			})
 			;
 			startStop = Button(window)
-				.states_([
-					["start", Color.black, Color.green],
-					["stop", Color.white, Color.red]
-				])
-				.action_({ |b|
-					switch (b.value,
-						1, {
-							this.record(
-								myServers[myServer.value],
-								recordName.string,
-								channelOffset.value.asInteger,
-								nChans.value.asInteger,
-								bufSize.value,
-								path.string ? storageLoc
-							)
-						},
-						0, { this.stop }
-					);
-				})
+			.states_([
+				["start", Color.black, Color.green],
+				["stop", Color.white, Color.red]
+			])
+			.action_({ |b|
+				switch (b.value,
+					1, {
+						this.record(
+							myServers[myServer.value],
+							recordName.string,
+							channelOffset.value.asInteger,
+							nChans.value.asInteger,
+							bufSize.value,
+							path.string ? storageLoc
+						)
+					},
+					0, { this.stop }
+				);
+			})
 			;
 
 			window.layout_(VLayout(
@@ -125,7 +125,11 @@ SNRecorder {
 			));
 		} {
 			window.front;
-		}
+		};
+
+		SynthDescLib.global[\snRecorder] ?? {
+			this.setSynthDef(myServers[myServer.value]);
+		};
 	}
 
 	*record { |server, name, channelOffset, numChannels = 2, bufSize = 262144, recordingPath|
@@ -139,7 +143,7 @@ SNRecorder {
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);
-				recSynth = Synth.tail(nil, \myRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
+				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
 						stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);

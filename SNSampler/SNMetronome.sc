@@ -23,16 +23,14 @@ SNMetronome {
 		};
 
 		server.bind {
-			SynthDescLib.at(\metronomes) ?? {
+			SynthDescLib.at(\snSynthDefs) ?? {
 				// store the metronome in a separate SynthDescLib in order to avoid name clashes
-				SynthDescLib(\metronomes, [server]);
+				SynthDescLib(\snSynthDefs, [server]);
 			};
-			"out: %, amp: %\n".postf(out, amp);
 			SynthDef(name.asSymbol, {
 				var env = EnvGen.ar(Env.perc(0.001, 0.1), doneAction: 2);
 				Out.ar(\out.kr(out), SinOsc.ar(\freq.kr(330) ! numChannels, mul: env * \baseAmp.kr * \amp.kr(amp)));
-			}).add(\metronomes);
-			"name: %\n".postf(name);
+			}).add(\snSynthDefs);
 			server.sync;
 			pdef = this.schedule;
 			pdef.play(clock);
@@ -40,7 +38,7 @@ SNMetronome {
 			CVCenter.use(
 				(name.asString + "metro on/off").asSymbol,
 				#[0, 1, \lin, 1.0],
-				1,
+				0,
 				assocName
 			);
 			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
@@ -50,7 +48,11 @@ SNMetronome {
 				(name.asString + "metro on/off").asSymbol,
 				"pause/resume metronome",
 				{ |cv|
-					if (cv.value == 1) { Pdef(name.asSymbol).resume } { Pdef(name.asSymbol).pause };
+					if (cv.input > 0) {
+						// make sure metronome and sampler are in sync
+						this.schedule;
+						Pdef(name.asSymbol).resume;
+					} { Pdef(name.asSymbol).pause };
 				}
 			)
 		};
@@ -66,8 +68,7 @@ SNMetronome {
 			tabName = name.asSymbol;
 		};
 		if (post) {
-			"metronome post".postln;
-			^Pdef(name.asSymbol,
+			^Pdef(tabName,
 				Pbind(
 					\synthLib, SynthDescLib.all[\metronomes],
 					\instrument, name.asSymbol,
@@ -80,8 +81,7 @@ SNMetronome {
 				)
 			).quant_([beatsPerBar, 0, 0, 1])
 		} {
-			"metronome post not".postln;
-			^Pdef(name,
+			^Pdef(tabName,
 				Pbind(
 					\synthLib, SynthDescLib.all[\metronomes],
 					\instrument, name.asSymbol,
