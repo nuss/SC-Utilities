@@ -35,6 +35,10 @@ SNMetronome {
 			pdef = this.schedule;
 			pdef.play(clock);
 			// add a CVWidget for pausing/resuming the metronome
+
+			/* TODO: create a method to create widgets to CVCenter
+			(or use SNSampler's method 'cvCenterAddWidget'?) */
+
 			CVCenter.use(
 				(name.asString + "metro on/off").asSymbol,
 				#[0, 1, \lin, 1.0],
@@ -94,4 +98,5 @@ SNMetronome {
 			).quant_([beatsPerBar, 0, 0, 1])
 		}
 	}
+
 }

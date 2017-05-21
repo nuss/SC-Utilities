@@ -1,10 +1,11 @@
 SNSampler {
 	classvar <all, <synthDescLib;
-	var <name, <clock, <tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
+	var <name, <clock, <>tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, <buffersAllocated = false;
 	var recorder, <isPlaying = false;
 	var <synthDescLib;
 	var nameString;
+	var <window;
 
 	*new { |name, clock, tempo=1, beatsPerBar=4, numBars=1, numBuffers=5, server|
 		^super.newCopyArgs(name, clock, tempo, beatsPerBar, numBars, numBuffers, server).init;
@@ -25,63 +26,54 @@ SNSampler {
 		server ?? { server = Server.default };
 		clock ?? {
 			// create a new clock, compensating latency
-			clock = TempoClock(tempo, 0, server.latency.neg);
+			clock = TempoClock(this.tempo, 0, server.latency.neg);
 		};
-
-		// boot the server before proceeding (if the server isn't already booted)
-		server.waitForBoot {
-			server.bind {
-				buffers = Buffer.allocConsecutive(
-					numBuffers,
-					server,
-					(server.sampleRate * beatsPerBar * numBars).asInteger
-				);
-				server.sync;
-				recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
-				server.sync;
-				buffersAllocated = true;
-				isPlaying = recorder.isPlaying;
-			}
-		}
 	}
 
 	start {
-		if (buffersAllocated) {
-			if (isPlaying.not) {
-				recorder[0] = {
-					var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
-					BufWr.ar(
-						soundIn,
-						\bufnum.kr(0),
-						// Phasor will ramp from start to end and then jump back to start
-						// if tempo != 1 we have to move through the buffer at a different rate
-						Phasor.ar(0, BufRateScale.kr(\bufnum.kr(0), tempo), 0, BufFrames.kr(\bufnum.kr(0)))
-					);
-					// play silently
-					Silent.ar;
-				};
-				this.schedule;
-				CVCenter.use((nameString + "on/off").asSymbol, #[0, 1, \lin, 1.0], 0, name);
-				// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
-				CVCenter.cvWidgets[(nameString + "on/off").asSymbol]
-				.setMidiMode(0).setSoftWithin(0);
-				CVCenter.addActionAt(
-					(nameString + "on/off").asSymbol,
-					"pause/resume",
-					{ |cv| if (cv.value == 1) {
-						this.resume;
-						this.schedule;
-					} { this.pause}}
-				);
-				this.addMetronome(out: 0, numChannels: 1, amp: 0);
+		if (isPlaying.not) {
+			if (server.serverRunning) {
+				var wdgtFunc;
 
-				recorder.play;
-				isPlaying = recorder.isPlaying;
+				server.bind {
+					buffers = Buffer.allocConsecutive(
+						numBuffers,
+						server,
+						(server.sampleRate * beatsPerBar * numBars).asInteger,
+						completionMessage: { |buf| "buffer % allocated\n".postf(buf.bufnum) };
+					);
+					server.sync;
+					buffersAllocated = true;
+					recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
+					recorder[0] = {
+						var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
+						BufWr.ar(
+							soundIn,
+							\bufnum.kr(0),
+							// Phasor will ramp from start to end and then jump back to start
+							// if this.tempo != 1 we have to move through the buffer at a different rate
+							Phasor.ar(0, BufRateScale.kr(\bufnum.kr(0), this.tempo), 0, BufFrames.kr(\bufnum.kr(0)))
+						);
+						// play silently
+						Silent.ar;
+					};
+					"recorder is playing: %\n".postf(recorder.isPlaying);
+					this.schedule;
+					wdgtFunc = "{ |cv| if (cv.value == 1) {
+						SNSampler.all['%'].resume;
+						SNSampler.all['%'].schedule;
+					} { SNSampler.all['%'].pause }}".format(name, name, name);
+					this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
+					this.addMetronome(out: 0, numChannels: 1, amp: 0);
+
+					// recorder.play;
+					isPlaying = recorder.isPlaying;
+				}
 			} {
-				this.resume;
+				"Please boot server '%' before starting the sampler.".format(server).warn;
 			}
 		} {
-			"The sampler has not yet been initialized completely!".warn
+			this.resume;
 		}
 	}
 
@@ -106,6 +98,20 @@ SNSampler {
 		}
 	}
 
+	cvCenterAddWidget { |suffix="", value, spec, func, midiMode, softWithin|
+		CVCenter.all[(nameString ++ suffix).asSymbol] ?? {
+			CVCenter.use(nameString ++ suffix, spec, value, name);
+			if (func.class == String) {
+				func = func.interpret;
+			};
+			if (func.isFunction) {
+				CVCenter.addActionAt(nameString ++ suffix, suffix, func);
+			}
+		};
+		midiMode !? { CVCenter.cvWidgets[(nameString ++ suffix).asSymbol].setMidiMode(midiMode) };
+		softWithin !? { CVCenter.cvWidgets[(nameString ++ suffix).asSymbol].setSoftWithin(softWithin) };
+	}
+
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
 		recorder !? {
@@ -127,7 +133,7 @@ SNSampler {
 					\tempo, CVCenter.use(
 						nameString + "tempo",
 						#[1, 4, \lin],
-						tempo,
+						this.tempo,
 						name
 					),
 					\trace, Pfunc { |e| "beatsPerBar:" + e.dur ++ "," + nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
@@ -150,7 +156,7 @@ SNSampler {
 					\tempo, CVCenter.use(
 						nameString + "tempo",
 						#[1, 4, \lin],
-						tempo,
+						this.tempo,
 						name
 					)
 				);
@@ -158,7 +164,7 @@ SNSampler {
 			CVCenter.addActionAt(
 				(nameString + "tempo").asSymbol,
 				'set tempo',
-				{ |cv| tempo = cv.value }
+				"{ |cv| SNSampler.all['" ++ nameString ++ "'].tempo = cv.value }"
 			)
 		}
 	}
@@ -214,11 +220,27 @@ SNSampler {
 		all[all.findKeyForValue(this)] = nil;
 	}
 
+	server_ { |server|
+		// TODO
+	}
+
+	// GUI
+	front { |parent, rect|
+		var rectProps = rect !? {
+			[rect.left, rect.top, rect.width, rect.height]
+		};
+
+		if (window.isNil or:{ window.isClosed }) {
+			SNSamplerGui(this, parent, *rectProps);
+			window = parent;
+		} { window.front };
+	}
+
 	// an acoustic metronome
 	addMetronome { |out, numChannels, amp|
 		metronome ?? {
 			metronome = SNMetronome(
-				name, clock, tempo, beatsPerBar, server,
+				name, clock, this.tempo, beatsPerBar, server,
 				name, out, numChannels, amp
 			)
 		}
@@ -231,6 +253,14 @@ SNSampler {
 
 	// run unit tests
 	*test {
-		TestSNSampler.runTest("TestSNSampler:test_init");
+		var controller, model;
+		controller = TestSNSampler.testController;
+		controller.put(\sync, { |changer|
+			switch (changer.value,
+				\init, { TestSNSampler.runTest("TestSNSampler:test_init") },
+				\start, { TestSNSampler.runTest("TestSNSampler:test_start") }
+			)
+		});
+		TestSNSampler.testModel.value_(\init).changed(\sync);
 	}
 }
