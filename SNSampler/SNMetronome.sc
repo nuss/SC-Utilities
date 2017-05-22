@@ -1,21 +1,24 @@
-SNMetronome {
+SNMetronome : AbstractSNSampler {
 	classvar <all;
-	var <name, <clock, <tempo, <beatsPerBar, <server;
+	var <parent, <clock, <tempo, <beatsPerBar, <server;
+	var <name;
 	var pdef;
 
-	*new { |name, clock, tempo=1, beatsPerBar=4, server, assocName, out=0, numChannels=1, amp=1|
-		^super.newCopyArgs(name, clock, tempo, beatsPerBar, server).init(assocName, out, numChannels, amp);
+	*new { |parent, clock, tempo=1, beatsPerBar=4, server, out=0, numChannels=1, amp=1|
+		^super.newCopyArgs(parent, clock, tempo, beatsPerBar, server).init(out, numChannels, amp);
 	}
 
-	init { |assocName, out, numChannels, amp|
+	init { |out, numChannels, amp|
 		all ?? { all = () };
-		if (name.isNil) {
+		if (parent.isNil or:{ parent.respondsTo(\name).not }) {
+			"no name given or parent does not understand 'name'".postln;
 			name = ("metronome" + (all.size + 1)).asSymbol;
 		} {
-			if (all.includesKey(name.asSymbol)) {
+			if (all.includesKey(parent.name.asSymbol)) {
 				Error("A metronome under the given name already exists").throw;
-			}
+			} { name = parent.name };
 		};
+		"metronome name is: %\n".postf(name);
 		all.put(name.asSymbol, this);
 		clock ?? {
 			// create a new clock, compensating latency
@@ -23,42 +26,29 @@ SNMetronome {
 		};
 
 		server.bind {
-			SynthDescLib.at(\snSynthDefs) ?? {
+			var wdgtFunc;
+
+			SynthDescLib.at(this.class.synthDescLib) ?? {
 				// store the metronome in a separate SynthDescLib in order to avoid name clashes
-				SynthDescLib(\snSynthDefs, [server]);
+				SynthDescLib(this.class.synthDescLib, [server]);
 			};
 			SynthDef(name.asSymbol, {
 				var env = EnvGen.ar(Env.perc(0.001, 0.1), doneAction: 2);
 				Out.ar(\out.kr(out), SinOsc.ar(\freq.kr(330) ! numChannels, mul: env * \baseAmp.kr * \amp.kr(amp)));
-			}).add(\snSynthDefs);
+			}).add(this.class.synthDescLib);
 			server.sync;
 			pdef = this.schedule;
+			Pdef.all.detect({ |p| pdef === p }).key.postln;
 			pdef.play(clock);
 			// add a CVWidget for pausing/resuming the metronome
-
-			/* TODO: create a method to create widgets to CVCenter
-			(or use SNSampler's method 'cvCenterAddWidget'?) */
-
-			CVCenter.use(
-				(name.asString + "metro on/off").asSymbol,
-				#[0, 1, \lin, 1.0],
-				0,
-				assocName
-			);
-			// if handled via midi we will want midiMode to be 0 (0-127) and no softWithin
-			CVCenter.cvWidgets[(name.asString + "metro on/off").asSymbol]
-			.setMidiMode(0).setSoftWithin(0);
-			CVCenter.addActionAt(
-				(name.asString + "metro on/off").asSymbol,
-				"pause/resume metronome",
-				{ |cv|
-					if (cv.input > 0) {
-						// make sure metronome and sampler are in sync
-						this.schedule;
-						Pdef(name.asSymbol).resume;
-					} { Pdef(name.asSymbol).pause };
-				}
-			)
+			wdgtFunc = "{ |cv|
+				if (cv.input > 0) {
+					SNMetronome.all['%'].schedule;
+					Pdef('%').resume;
+				} { Pdef('%').pause }
+			}".format(name, name, name);
+			wdgtFunc.postln;
+			this.cvCenterAddWidget(" metro on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
 		};
 	}
 
@@ -74,7 +64,7 @@ SNMetronome {
 		if (post) {
 			^Pdef(tabName,
 				Pbind(
-					\synthLib, SynthDescLib.all[\metronomes],
+					\synthLib, SynthDescLib.all[this.class.synthDescLib],
 					\instrument, name.asSymbol,
 					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
 					\dur, 1,
@@ -87,7 +77,7 @@ SNMetronome {
 		} {
 			^Pdef(tabName,
 				Pbind(
-					\synthLib, SynthDescLib.all[\metronomes],
+					\synthLib, SynthDescLib.all[this.class.synthDescLib],
 					\instrument, name.asSymbol,
 					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
 					\dur, 1,

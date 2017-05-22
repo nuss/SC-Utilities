@@ -1,9 +1,8 @@
-SNSampler {
-	classvar <all, <synthDescLib;
+SNSampler : AbstractSNSampler {
+	classvar <all;
 	var <name, <clock, <>tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, <buffersAllocated = false;
 	var recorder, <isPlaying = false;
-	var <synthDescLib;
 	var nameString;
 	var <window;
 
@@ -57,13 +56,13 @@ SNSampler {
 						// play silently
 						Silent.ar;
 					};
-					"recorder is playing: %\n".postf(recorder.isPlaying);
 					this.schedule;
 					wdgtFunc = "{ |cv| if (cv.value == 1) {
 						SNSampler.all['%'].resume;
 						SNSampler.all['%'].schedule;
 					} { SNSampler.all['%'].pause }}".format(name, name, name);
 					this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
+					"recorder is playing and widgets for sampler were added: %\n".postf(recorder.isPlaying);
 					this.addMetronome(out: 0, numChannels: 1, amp: 0);
 
 					// recorder.play;
@@ -96,20 +95,6 @@ SNSampler {
 			this.schedule;
 			recorder.resume;
 		}
-	}
-
-	cvCenterAddWidget { |suffix="", value, spec, func, midiMode, softWithin|
-		CVCenter.all[(nameString ++ suffix).asSymbol] ?? {
-			CVCenter.use(nameString ++ suffix, spec, value, name);
-			if (func.class == String) {
-				func = func.interpret;
-			};
-			if (func.isFunction) {
-				CVCenter.addActionAt(nameString ++ suffix, suffix, func);
-			}
-		};
-		midiMode !? { CVCenter.cvWidgets[(nameString ++ suffix).asSymbol].setMidiMode(midiMode) };
-		softWithin !? { CVCenter.cvWidgets[(nameString ++ suffix).asSymbol].setSoftWithin(softWithin) };
 	}
 
 	// schedule sampling, post current off beat if post == true
@@ -240,8 +225,8 @@ SNSampler {
 	addMetronome { |out, numChannels, amp|
 		metronome ?? {
 			metronome = SNMetronome(
-				name, clock, this.tempo, beatsPerBar, server,
-				name, out, numChannels, amp
+				this, clock, this.tempo, beatsPerBar, server,
+				out, numChannels, amp
 			)
 		}
 	}
