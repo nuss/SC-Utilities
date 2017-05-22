@@ -1,18 +1,38 @@
 AbstractSNSampler {
-	classvar <>synthDescLib = \SN;
+	classvar <>synthDescLib = \SN, <>oscFeedbackAddr;
 
 	// handle widget creation in CVCenter
 	cvCenterAddWidget { |suffix="", value, spec, func, midiMode, softWithin|
-		CVCenter.all[(this.name.asString ++ suffix).asSymbol] ?? {
-			CVCenter.use(this.name.asString ++ suffix, spec, value, this.name);
+		var wdgtName = (this.name.asString ++ suffix).asSymbol;
+		CVCenter.all[wdgtName] ?? {
+			CVCenter.use(wdgtName, spec, value, this.name);
 			if (func.class == String) {
 				func = func.interpret;
 			};
 			if (func.isFunction) {
-				CVCenter.addActionAt(this.name.asString ++ suffix, suffix, func);
+				CVCenter.addActionAt(wdgtName, suffix, func);
 			}
 		};
-		midiMode !? { CVCenter.cvWidgets[(this.name.asString ++ suffix).asSymbol].setMidiMode(midiMode) };
-		softWithin !? { CVCenter.cvWidgets[(this.name.asString ++ suffix).asSymbol].setSoftWithin(softWithin) };
+
+		switch (CVCenter.cvWidgets[wdgtName],
+			CVWidgetKnob, {
+				midiMode !? { CVCenter.cvWidgets[wdgtName].setMidiMode(midiMode) };
+				softWithin !? { CVCenter.cvWidgets[wdgtName].setSoftWithin(softWithin) };
+			},
+			CVWidget2D, {
+				#[lo, hi].do{ |sl|
+					midiMode !? { CVCenter.cvWidgets[wdgtName].setMidiMode(midiMode, sl) };
+					softWithin !? { CVCenter.cvWidgets[wdgtName].setSoftWithin(softWithin, sl) };
+				}
+			},
+			CVWidgetMS, {
+				CVenter.at(wdgtName).spec.size.do { |i|
+					midiMode !? { CVCenter.cvWidgets[wdgtName].setMidiMode(midiMode, i) };
+					softWithin !? { CVCenter.cvWidgets[wdgtName].setSoftWithin(softWithin, i) };
+				}
+			}
+		)
+
+		^CVCenter.cvWidgets[wdgtName];
 	}
 }

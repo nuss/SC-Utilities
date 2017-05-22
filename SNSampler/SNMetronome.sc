@@ -18,7 +18,6 @@ SNMetronome : AbstractSNSampler {
 				Error("A metronome under the given name already exists").throw;
 			} { name = parent.name };
 		};
-		"metronome name is: %\n".postf(name);
 		all.put(name.asSymbol, this);
 		clock ?? {
 			// create a new clock, compensating latency
