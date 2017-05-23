@@ -6,11 +6,13 @@ AbstractSNSampler {
 		var wdgtName = (this.name.asString ++ suffix).asSymbol;
 		CVCenter.all[wdgtName] ?? {
 			CVCenter.use(wdgtName, spec, value, this.name);
-			if (func.class == String) {
-				func = func.interpret;
-			};
-			if (func.isFunction) {
-				CVCenter.addActionAt(wdgtName, suffix, func);
+			func !? {
+				if (func.class == String) {
+					func = func.interpret;
+				};
+				if (func.isFunction) {
+					CVCenter.addActionAt(wdgtName, suffix, func);
+				}
 			}
 		};
 

@@ -52,6 +52,9 @@ SNSampler : AbstractSNSampler {
 						(server.sampleRate * beatsPerBar * numBars).asInteger,
 						completionMessage: { |buf| "buffer % allocated\n".postf(buf.bufnum) };
 					);
+
+					"bufnums: %\n".postf(buffers.collect(_.bufnum));
+
 					server.sync;
 					buffersAllocated = true;
 
@@ -72,28 +75,29 @@ SNSampler : AbstractSNSampler {
 					this.schedule;
 
 					wdgtFunc = "{ |cv| if (cv.value == 1) {
-SNSampler.all['%'].resume;
-SNSampler.all['%'].schedule;
-} { SNSampler.all['%'].pause }}".format(name, name, name);
+						SNSampler.all['%'].resume;
+						SNSampler.all['%'].schedule;
+					} { SNSampler.all['%'].pause }}".format(name, name, name);
 					this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
 
+					bufSetter = this.cvCenterAddWidget(" bufSet", this.activeBuffers, [0!numBuffers, 1!numBuffers, \lin, 1.0], midiMode: 0, softWithin: 0);
+
 					bufSetFunc = "SNSampler.all['%'].activeBuffers_(cv.input);".format(name);
+					/* debug */
+					bufSetFunc = bufSetFunc ++ "\n[SNSampler.all['%'].activeBuffers, cv.input];".format(name);
 					activeBuffers.do { |state, bufnum|
 						bufSetFunc = bufSetFunc ++
-						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', cv.input[%]);".format(bufnum, bufnum);
+						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
 					};
-					bufSetFunc = "{ |cv|\n" ++ bufSetFunc ++ "\n}";
-					bufSetter = this.cvCenterAddWidget(" bufSet", 0, [0!numBuffers, 1!numBuffers, \lin, 1.0], bufSetFunc, 0, 0);
-					bufSetter.addAction('sample to buffer on/off', "{ |cv|
-						SNSampler.all['%'].activeBuffers_(cv.input)
-					}".format(name));
+					bufSetter.addAction('send feedback', "{ |cv|\n" ++ bufSetFunc ++ "\n}");
+
 					buffers.collect(_.bufnum).do { |bufnum|
 						bufSetter.oscConnect(
-							this.class.oscFeedbackAddr.ip,
-							nil,
-							"/buf%/set".format(bufnum).asSymbol,
-							1,
-							bufnum
+							this.class.oscFeedbackAddr.ip.postln,
+							// nil,
+							name: "/buf%/set".format(bufnum),
+							oscMsgIndex: 1,
+							slot: bufnum
 						)
 					};
 
