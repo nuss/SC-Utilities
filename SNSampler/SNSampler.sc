@@ -42,7 +42,7 @@ SNSampler : AbstractSNSampler {
 	start {
 		if (isPlaying.not) {
 			if (server.serverRunning) {
-				var wdgtFunc, bufSetFunc;
+				var wdgtFunc, bufSetFunc, feedbackFunc;
 				var bufSetter;
 
 				server.bind {
@@ -81,16 +81,6 @@ SNSampler : AbstractSNSampler {
 					this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
 
 					bufSetter = this.cvCenterAddWidget(" bufSet", this.activeBuffers, [0!numBuffers, 1!numBuffers, \lin, 1.0], midiMode: 0, softWithin: 0);
-
-					bufSetFunc = "SNSampler.all['%'].activeBuffers_(cv.input);".format(name);
-					/* debug */
-					bufSetFunc = bufSetFunc ++ "\n[SNSampler.all['%'].activeBuffers, cv.input];".format(name);
-					activeBuffers.do { |state, bufnum|
-						bufSetFunc = bufSetFunc ++
-						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
-					};
-					bufSetter.addAction('send feedback', "{ |cv|\n" ++ bufSetFunc ++ "\n}");
-
 					buffers.collect(_.bufnum).do { |bufnum|
 						bufSetter.oscConnect(
 							this.class.oscFeedbackAddr.ip.postln,
@@ -100,6 +90,18 @@ SNSampler : AbstractSNSampler {
 							slot: bufnum
 						)
 					};
+
+					// bufSetFunc = "SNSampler.all['%'].activeBuffers_(cv.input);".format(name);
+					bufSetFunc = "cv.input.do{ |in, i| SNSampler.all['%'].activeBuffers[i] = in };".format(name);
+					bufSetter.addAction('set active buffers', "{ |cv|\n" ++ bufSetFunc ++ "\n}");
+
+					feedbackFunc = "{ |cv|\n";
+					activeBuffers.do { |state, bufnum|
+						feedbackFunc = feedbackFunc ++
+						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
+					};
+					feedbackFunc = feedbackFunc ++ "\n}";
+					bufSetter.addAction('feedback', feedbackFunc);
 
 					this.addMetronome(out: 0, numChannels: 1, amp: 0);
 
