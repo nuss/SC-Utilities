@@ -101,7 +101,7 @@ SNSampler : AbstractSNSampler {
 						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
 					};
 					feedbackFunc = feedbackFunc ++ "\n}";
-					bufSetter.addAction('feedback', feedbackFunc);
+					bufSetter.addAction('feedback', feedbackFunc, active: false);
 
 					this.addMetronome(out: 0, numChannels: 1, amp: 0);
 
