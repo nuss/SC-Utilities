@@ -3,7 +3,7 @@ SNSampler : AbstractSNSampler {
 	var <name, <clock, <>tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, <buffersAllocated = false;
 	var recorder, <isPlaying = false;
-	var nameString, <>activeBuffers;
+	var nameString, <>activeBuffers, activeBuffersSeq;
 	var <window;
 
 	*new { |name, clock, tempo=1, beatsPerBar=4, numBars=1, numBuffers=5, server, oscFeedbackAddr|
@@ -36,14 +36,15 @@ SNSampler : AbstractSNSampler {
 		};
 
 		// mark buffers inactive on start
-		activeBuffers = 0!numBuffers;
+		activeBuffers = 1!numBuffers;
 	}
 
 	start {
 		if (isPlaying.not) {
 			if (server.serverRunning) {
-				var wdgtFunc, bufSetFunc, feedbackFunc;
-				var bufSetter;
+				var bufnums;
+				var onOffFunc, bufSetFunc, feedbackFunc;
+				var onOff, bufSetter;
 
 				server.bind {
 					buffers = Buffer.allocConsecutive(
@@ -52,8 +53,7 @@ SNSampler : AbstractSNSampler {
 						(server.sampleRate * beatsPerBar * numBars).asInteger,
 						completionMessage: { |buf| "buffer % allocated\n".postf(buf.bufnum) };
 					);
-
-					"bufnums: %\n".postf(buffers.collect(_.bufnum));
+					bufnums = buffers.collect(_.bufnum);
 
 					server.sync;
 					buffersAllocated = true;
@@ -74,31 +74,46 @@ SNSampler : AbstractSNSampler {
 
 					this.schedule;
 
-					wdgtFunc = "{ |cv| if (cv.value == 1) {
+					CVCenter.cvWidgets[(nameString + "level").asSymbol].oscConnect(
+						this.class.oscFeedbackAddr.ip,
+						name: '/sampler/amp'
+					);
+					CVCenter.cvWidgets[(nameString + "tempo").asSymbol].oscConnect(
+						this.class.oscFeedbackAddr.ip,
+						name: '/sampler/tempo'
+					);
+
+					onOffFunc = "{ |cv| if (cv.value == 1) {
 						SNSampler.all['%'].resume;
 						SNSampler.all['%'].schedule;
 					} { SNSampler.all['%'].pause }}".format(name, name, name);
-					this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
+					onOff = this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], onOffFunc, 0, 0);
+					onOff.addAction('sampler toggle feedback', { |cv| SNSampler.oscFeedbackAddr.sendMsg('/sampler/toggle', cv.input) }, active: false);
+					onOff.oscConnect(this.class.oscFeedbackAddr.ip, name: '/sampler/toggle', oscMsgIndex: 1);
+
 
 					bufSetter = this.cvCenterAddWidget(" bufSet", this.activeBuffers, [0!numBuffers, 1!numBuffers, \lin, 1.0], midiMode: 0, softWithin: 0);
-					buffers.collect(_.bufnum).do { |bufnum|
+					bufnums.do { |bufnum|
 						bufSetter.oscConnect(
 							this.class.oscFeedbackAddr.ip.postln,
 							// nil,
 							name: "/buf%/set".format(bufnum),
-							oscMsgIndex: 1,
 							slot: bufnum
 						)
 					};
 
 					// bufSetFunc = "SNSampler.all['%'].activeBuffers_(cv.input);".format(name);
-					bufSetFunc = "cv.input.do{ |in, i| SNSampler.all['%'].activeBuffers[i] = in };".format(name);
+					bufSetFunc = "cv.input.indexOf(1.0) !? {
+						SNSampler.all['%'].activeBuffers_(cv.input);
+						SNSampler.all['%'].setActiveBuffers(cv.input);
+					};".format(name, name);
 					bufSetter.addAction('set active buffers', "{ |cv|\n" ++ bufSetFunc ++ "\n}");
 
 					feedbackFunc = "{ |cv|\n";
 					activeBuffers.do { |state, bufnum|
 						feedbackFunc = feedbackFunc ++
-						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
+						// "\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
+						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', cv.input[%]);".format(bufnum, bufnum);
 					};
 					feedbackFunc = feedbackFunc ++ "\n}";
 					bufSetter.addAction('feedback', feedbackFunc, active: false);
@@ -139,6 +154,22 @@ SNSampler : AbstractSNSampler {
 
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
+		var bufnums;
+
+		if (buffers.isNil) {
+			"Can't schedule as no buffers have been allocated yet".warn;
+		} {
+			bufnums = buffers.collect(_.bufnum);
+		};
+
+		activeBuffersSeq ?? {
+			var initiallyActive = 1!numBuffers;
+			this.setActiveBuffers(initiallyActive);
+			bufnums.do{ |bn|
+				this.class.oscFeedbackAddr.sendMsg("/buf"++bn++"/set", 1);
+			}
+		};
+
 		recorder !? {
 			if (post) {
 				recorder[1] = \set -> Pbind(
@@ -154,13 +185,22 @@ SNSampler : AbstractSNSampler {
 						0.5,
 						name
 					),
-					\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+					\bufnum, activeBuffersSeq,
 					\tempo, CVCenter.use(
 						nameString + "tempo",
 						#[1, 4, \lin],
 						this.tempo,
 						name
 					),
+					\feedback, Pfunc { |ev|
+						buffers.do { |b, i|
+							if (b.bufnum == ev.bufnum) {
+								this.class.oscFeedbackAddr.sendMsg("/buf"++ev.bufnum++"/recording", 1);
+							} {
+								this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
+							}
+						}
+					},
 					\trace, Pfunc { |e| "beatsPerBar:" + e.dur ++ "," + nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
 				);
 			} {
@@ -177,13 +217,22 @@ SNSampler : AbstractSNSampler {
 						0.5,
 						name
 					),
-					\bufnum, Pseq(buffers.collect(_.bufnum), inf),
+					\bufnum, activeBuffersSeq.trace,
 					\tempo, CVCenter.use(
 						nameString + "tempo",
 						#[1, 4, \lin],
 						this.tempo,
 						name
-					)
+					),
+					\feedback, Pfunc { |ev|
+						buffers.do { |b, i|
+							if (b.bufnum == ev.bufnum) {
+								this.class.oscFeedbackAddr.sendMsg("/buf"++ev.bufnum++"/recording", 1);
+							} {
+								this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
+							}
+						}
+					}
 				);
 			};
 			CVCenter.addActionAt(
@@ -275,6 +324,16 @@ SNSampler : AbstractSNSampler {
 	removeMetronome {
 		metronome.clear;
 		metronome = nil;
+	}
+
+	// set recording buffers and update recording sequence accordingly
+	setActiveBuffers { |input|
+		var bufnums = buffers.collect(_.bufnum);
+
+		activeBuffersSeq ?? {
+			activeBuffersSeq = PatternProxy.new;
+		};
+		activeBuffersSeq.source = Pseq(bufnums[input.selectIndices{|it, i| it > 0}], inf);
 	}
 
 	// run unit tests

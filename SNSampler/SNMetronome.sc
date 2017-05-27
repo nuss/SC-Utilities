@@ -46,7 +46,6 @@ SNMetronome : AbstractSNSampler {
 					Pdef('%').resume;
 				} { Pdef('%').pause }
 			}".format(name, name, name);
-			wdgtFunc.postln;
 			this.cvCenterAddWidget(" metro on/off", 0, #[0, 1, \lin, 1.0], wdgtFunc, 0, 0);
 		};
 	}
