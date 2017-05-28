@@ -3,7 +3,7 @@ SNSampler : AbstractSNSampler {
 	var <name, <clock, <>tempo, <beatsPerBar, <numBars, <numBuffers, <server, <inBus;
 	var <buffers, <recorder, <metronome, <buffersAllocated = false;
 	var recorder, <isPlaying = false;
-	var nameString, <>activeBuffers, activeBuffersSeq;
+	var nameString, <activeBuffers, activeBuffersSeq;
 	var <window;
 
 	*new { |name, clock, tempo=1, beatsPerBar=4, numBars=1, numBuffers=5, server, oscFeedbackAddr|
@@ -35,7 +35,7 @@ SNSampler : AbstractSNSampler {
 			clock = TempoClock(this.tempo, 0, server.latency.neg);
 		};
 
-		// mark buffers inactive on start
+		// mark all buffers active on start
 		activeBuffers = 1!numBuffers;
 	}
 
@@ -43,7 +43,7 @@ SNSampler : AbstractSNSampler {
 		if (isPlaying.not) {
 			if (server.serverRunning) {
 				var bufnums;
-				var onOffFunc, bufSetFunc, feedbackFunc;
+				var onOffFunc, feedbackFunc;
 				var onOff, bufSetter;
 
 				server.bind {
@@ -103,16 +103,13 @@ SNSampler : AbstractSNSampler {
 					};
 
 					// bufSetFunc = "SNSampler.all['%'].activeBuffers_(cv.input);".format(name);
-					bufSetFunc = "cv.input.indexOf(1.0) !? {
+					bufSetter.addAction('set active buffers', "{ |cv|
 						SNSampler.all['%'].activeBuffers_(cv.input);
-						SNSampler.all['%'].setActiveBuffers(cv.input);
-					};".format(name, name);
-					bufSetter.addAction('set active buffers', "{ |cv|\n" ++ bufSetFunc ++ "\n}");
+					}".format(name));
 
 					feedbackFunc = "{ |cv|\n";
 					activeBuffers.do { |state, bufnum|
 						feedbackFunc = feedbackFunc ++
-						// "\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', SNSampler.all['%'].activeBuffers[%]);".format(bufnum, name, bufnum);
 						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', cv.input[%]);".format(bufnum, bufnum);
 					};
 					feedbackFunc = feedbackFunc ++ "\n}";
@@ -163,8 +160,8 @@ SNSampler : AbstractSNSampler {
 		};
 
 		activeBuffersSeq ?? {
-			var initiallyActive = 1!numBuffers;
-			this.setActiveBuffers(initiallyActive);
+			var initiallyActive = 1.0!numBuffers;
+			this.activeBuffers_(initiallyActive);
 			bufnums.do{ |bn|
 				this.class.oscFeedbackAddr.sendMsg("/buf"++bn++"/set", 1);
 			}
@@ -217,7 +214,7 @@ SNSampler : AbstractSNSampler {
 						0.5,
 						name
 					),
-					\bufnum, activeBuffersSeq.trace,
+					\bufnum, activeBuffersSeq,
 					\tempo, CVCenter.use(
 						nameString + "tempo",
 						#[1, 4, \lin],
@@ -327,13 +324,17 @@ SNSampler : AbstractSNSampler {
 	}
 
 	// set recording buffers and update recording sequence accordingly
-	setActiveBuffers { |input|
+	activeBuffers_ { |input|
 		var bufnums = buffers.collect(_.bufnum);
 
 		activeBuffersSeq ?? {
 			activeBuffersSeq = PatternProxy.new;
 		};
-		activeBuffersSeq.source = Pseq(bufnums[input.selectIndices{|it, i| it > 0}], inf);
+
+		input.indexOf(1.0) !? {
+			activeBuffers = input;
+			activeBuffersSeq.setSource(Pseq(bufnums[activeBuffers.selectIndices{|it, i| it > 0}], inf));
+		}
 	}
 
 	// run unit tests
