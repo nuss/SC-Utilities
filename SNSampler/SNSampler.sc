@@ -97,7 +97,7 @@ SNSampler : AbstractSNSampler {
 						bufSetter.oscConnect(
 							this.class.oscFeedbackAddr.ip.postln,
 							// nil,
-							name: "/buf%/set".format(bufnum),
+							name: "/buf/set/%".format(bufnum + 1),
 							slot: bufnum
 						)
 					};
@@ -110,10 +110,10 @@ SNSampler : AbstractSNSampler {
 					feedbackFunc = "{ |cv|\n";
 					activeBuffers.do { |state, bufnum|
 						feedbackFunc = feedbackFunc ++
-						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf%/set', cv.input[%]);".format(bufnum, bufnum);
+						"\nSNSampler.oscFeedbackAddr.sendMsg('/buf/set/%', cv.input[%]);".format(bufnum + 1, bufnum);
 					};
 					feedbackFunc = feedbackFunc ++ "\n}";
-					bufSetter.addAction('feedback', feedbackFunc, active: false);
+					bufSetter.addAction('feedback', feedbackFunc);
 
 					this.addMetronome(out: 0, numChannels: 1, amp: 0);
 
@@ -163,7 +163,7 @@ SNSampler : AbstractSNSampler {
 			var initiallyActive = 1.0!numBuffers;
 			this.activeBuffers_(initiallyActive);
 			bufnums.do{ |bn|
-				this.class.oscFeedbackAddr.sendMsg("/buf"++bn++"/set", 1);
+				this.class.oscFeedbackAddr.sendMsg("/buf/set/"++(bn+1), 1);
 			}
 		};
 
