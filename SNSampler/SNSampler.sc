@@ -13,7 +13,7 @@ SNSampler : AbstractSNSampler {
 	init { |oscFeedbackAddr|
 		oscFeedbackAddr !? {
 			if (oscFeedbackAddr.class !== NetAddr) {
-				Error("If supplied oscFeedbackAddr must be a NetAddr. Given: %\n".format(oscFeedbackAddr));
+				Error("If supplied, oscFeedbackAddr must be a NetAddr. Given: %\n".format(oscFeedbackAddr));
 			} {
 				this.class.oscFeedbackAddr_(oscFeedbackAddr);
 			}
@@ -76,7 +76,7 @@ SNSampler : AbstractSNSampler {
 
 					CVCenter.cvWidgets[(nameString + "level").asSymbol].oscConnect(
 						this.class.oscFeedbackAddr.ip,
-						name: '/sampler/amp'
+						name: '/sampler/inlevel'
 					);
 					CVCenter.cvWidgets[(nameString + "tempo").asSymbol].oscConnect(
 						this.class.oscFeedbackAddr.ip,
@@ -87,8 +87,8 @@ SNSampler : AbstractSNSampler {
 						SNSampler.all['%'].resume;
 						SNSampler.all['%'].schedule;
 					} { SNSampler.all['%'].pause }}".format(name, name, name);
-					onOff = this.cvCenterAddWidget(" on/off", 0, #[0, 1, \lin, 1.0], onOffFunc, 0, 0);
-					onOff.addAction('sampler toggle feedback', { |cv| SNSampler.oscFeedbackAddr.sendMsg('/sampler/toggle', cv.input) }, active: false);
+					onOff = this.cvCenterAddWidget(" on/off", 1, #[0, 1, \lin, 1.0], onOffFunc, 0, 0);
+					onOff.addAction('sampler toggle feedback', { |cv| SNSampler.oscFeedbackAddr.sendMsg('/sampler/toggle', cv.input) });
 					onOff.oscConnect(this.class.oscFeedbackAddr.ip, name: '/sampler/toggle', oscMsgIndex: 1);
 
 
@@ -116,6 +116,20 @@ SNSampler : AbstractSNSampler {
 					bufSetter.addAction('feedback', feedbackFunc);
 
 					this.addMetronome(out: 0, numChannels: 1, amp: 0);
+					CVCenter.cvWidgets[(nameString + "level").asSymbol].addAction('level feedback', { |cv|
+						SNSampler.oscFeedbackAddr.sendMsg('/sampler/inlevel', cv.input);
+					});
+					CVCenter.cvWidgets[(nameString + "tempo").asSymbol].addAction('tempo feedback', { |cv|
+						SNSampler.oscFeedbackAddr.sendMsg('/sampler/tempo', cv.input);
+					});
+					this.class.oscFeedbackAddr.sendMsg('/sampler/toggle', 1)
+					.sendMsg('/sampler/inlevel', CVCenter.at((nameString + "level").asSymbol).input)
+					.sendMsg('/sampler/tempo', CVCenter.at((nameString + "tempo").asSymbol).input);
+
+
+					bufnums.do { |bn|
+						OSCdef(("buf" + bn).asSymbol, { this.zero(bn) }, ("/buf" ++ bn ++ "/zero").asSymbol);
+					};
 
 					// recorder.play;
 					isPlaying = recorder.isPlaying;
@@ -125,12 +139,18 @@ SNSampler : AbstractSNSampler {
 			}
 		} {
 			this.resume;
+			this.class.oscFeedbackAddr.sendMsg('/sampler/toggle', 1)
+			.sendMsg('/sampler/inlevel', CVCenter.at((nameString + "level").asSymbol).input)
+			.sendMsg('/sampler/tempo', CVCenter.at((nameString + "tempo").asSymbol).input);
 		}
 	}
 
 	stop {
 		recorder !? {
 			recorder.stop;
+			buffers.collect(_.bufnum).do { |bn|
+				OSCdef(("buf" ++ bn).asSymbol).free;
+			};
 			isPlaying = recorder.isPlaying;
 		}
 	}
@@ -151,7 +171,7 @@ SNSampler : AbstractSNSampler {
 
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
-		var bufnums;
+		var bufnums, trace;
 
 		if (buffers.isNil) {
 			"Can't schedule as no buffers have been allocated yet".warn;
@@ -167,71 +187,49 @@ SNSampler : AbstractSNSampler {
 			}
 		};
 
+		trace ?? { trace = PatternProxy.new };
+		if (post) {
+			trace.setSource(
+				Pfunc { |e|
+					"beatsPerBar:" + e.dur ++ "," + nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum
+				}.trace
+			);
+		} {
+			trace.setSource(0);
+		};
+
 		recorder !? {
-			if (post) {
-				recorder[1] = \set -> Pbind(
-					\dur, beatsPerBar * numBars,
-					\in, CVCenter.use(
-						(nameString + "in").asSymbol,
-						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
-						tab: name
-					),
-					\inputLevel, CVCenter.use(
-						(nameString + "level").asSymbol,
-						\amp,
-						0.5,
-						name
-					),
-					\bufnum, activeBuffersSeq,
-					\tempo, CVCenter.use(
-						nameString + "tempo",
-						#[1, 4, \lin],
-						this.tempo,
-						name
-					),
-					\feedback, Pfunc { |ev|
-						buffers.do { |b, i|
-							if (b.bufnum == ev.bufnum) {
-								this.class.oscFeedbackAddr.sendMsg("/buf"++ev.bufnum++"/recording", 1);
-							} {
-								this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
-							}
-						}
-					},
-					\trace, Pfunc { |e| "beatsPerBar:" + e.dur ++ "," + nameString + "beat:" + clock.beatInBar ++ ", buffer:" + e.bufnum }.trace
-				);
-			} {
-				recorder[1] = \set -> Pbind(
-					\dur, beatsPerBar * numBars,
-					\in, CVCenter.use(
-						(nameString + "in").asSymbol,
-						ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
-						tab: name
-					),
-					\inputLevel, CVCenter.use(
-						(nameString + "level").asSymbol,
-						\amp,
-						0.5,
-						name
-					),
-					\bufnum, activeBuffersSeq,
-					\tempo, CVCenter.use(
-						nameString + "tempo",
-						#[1, 4, \lin],
-						this.tempo,
-						name
-					),
-					\feedback, Pfunc { |ev|
-						buffers.do { |b, i|
-							if (b.bufnum == ev.bufnum) {
-								this.class.oscFeedbackAddr.sendMsg("/buf"++ev.bufnum++"/recording", 1);
-							} {
-								this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
-							}
+			recorder[1] = \set -> Pbind(
+				\dur, beatsPerBar * numBars,
+				\in, CVCenter.use(
+					(nameString + "in").asSymbol,
+					ControlSpec(0, server.options.firstPrivateBus-1, \lin, 1.0),
+					tab: name
+				),
+				\inputLevel, CVCenter.use(
+					(nameString + "level").asSymbol,
+					\amp,
+					0.5,
+					name
+				),
+				\bufnum, activeBuffersSeq,
+				\tempo, CVCenter.use(
+					nameString + "tempo",
+					#[1, 4, \lin],
+					this.tempo,
+					name
+				),
+				\feedback, Pfunc { |ev|
+					buffers.do { |b, i|
+						if (b.bufnum == ev.bufnum) {
+							this.class.oscFeedbackAddr.sendMsg("/buf"++ev.bufnum++"/recording", 1);
+						} {
+							this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
 						}
 					}
-				);
-			};
+				},
+				\trace, trace
+			);
 			CVCenter.addActionAt(
 				(nameString + "tempo").asSymbol,
 				'set tempo',

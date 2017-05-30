@@ -56,35 +56,31 @@ SNMetronome : AbstractSNSampler {
 	}
 
 	schedule { |post=false, out=0, amp=0, tabName|
+		var trace;
+
 		tabName ?? {
 			tabName = name.asSymbol;
 		};
+
+		trace ?? { trace = PatternProxy.new.quant_([beatsPerBar, 0, 0, 1]) };
 		if (post) {
-			^Pdef(tabName,
-				Pbind(
-					\synthLib, SynthDescLib.all[this.class.synthDescLib],
-					\instrument, name.asSymbol,
-					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
-					\dur, 1,
-					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
-					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
-					\out, out,
-					\trace, Pfunc {  "metronome" + name + "beat:" + clock.beatInBar }.trace
-				)
-			).quant_([beatsPerBar, 0, 0, 1])
+			trace.setSource(Pfunc { "metronome" + name + "beat:" + clock.beatInBar }.trace);
 		} {
-			^Pdef(tabName,
-				Pbind(
-					\synthLib, SynthDescLib.all[this.class.synthDescLib],
-					\instrument, name.asSymbol,
-					\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
-					\dur, 1,
-					\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
-					\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
-					\out, out
-				)
-			).quant_([beatsPerBar, 0, 0, 1])
-		}
+			trace.setSource(0);
+		};
+
+		^Pdef(tabName,
+			Pbind(
+				\synthLib, SynthDescLib.all[this.class.synthDescLib],
+				\instrument, name.asSymbol,
+				\freq, Pseq([440] ++ (330 ! (beatsPerBar - 1)), inf),
+				\dur, 1,
+				\baseAmp, Pseq([1] ++ (0.7 ! (beatsPerBar - 1)), inf),
+				\amp, CVCenter.use((name.asString + "metroAmp").asSymbol, value: amp, tab: tabName),
+				\out, out,
+				\trace, trace
+			)
+		).quant_([beatsPerBar, 0, 0, 1])
 	}
 
 }
