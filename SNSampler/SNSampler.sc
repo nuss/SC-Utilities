@@ -40,12 +40,13 @@ SNSampler : AbstractSNSampler {
 	}
 
 	start {
+		var bufnums;
+		var onOffFunc, feedbackFunc;
+		var onOff, bufSetter;
+		var soundIn;
+
 		if (isPlaying.not) {
 			if (server.serverRunning) {
-				var bufnums;
-				var onOffFunc, feedbackFunc;
-				var onOff, bufSetter;
-
 				server.bind {
 					buffers = Buffer.allocConsecutive(
 						numBuffers,
@@ -60,7 +61,7 @@ SNSampler : AbstractSNSampler {
 
 					recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
 					recorder[0] = {
-						var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
+						soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
 						BufWr.ar(
 							soundIn,
 							\bufnum.kr(0),
@@ -172,6 +173,7 @@ SNSampler : AbstractSNSampler {
 	// schedule sampling, post current off beat if post == true
 	schedule { |post=false|
 		var bufnums, trace;
+		var initiallyActive;
 
 		if (buffers.isNil) {
 			"Can't schedule as no buffers have been allocated yet".warn;
@@ -180,7 +182,7 @@ SNSampler : AbstractSNSampler {
 		};
 
 		activeBuffersSeq ?? {
-			var initiallyActive = 1.0!numBuffers;
+			initiallyActive = 1.0!numBuffers;
 			this.activeBuffers_(initiallyActive);
 			bufnums.do{ |bn|
 				this.class.oscFeedbackAddr.sendMsg("/buf/set/"++(bn+1), 1);
@@ -337,15 +339,6 @@ SNSampler : AbstractSNSampler {
 
 	// run unit tests
 	*test {
-		// var controller, model;
-		// controller = TestSNSampler.testController;
-		// controller.put(\sync, { |changer|
-		// 	switch (changer.value,
-		// 		\init, { TestSNSampler.runTest("TestSNSampler:test_init") },
-		// 		\start, { TestSNSampler.runTest("TestSNSampler:test_start") }
-		// 	)
-		// });
-		// TestSNSampler.testModel.value_(\init).changed(\sync);
 		TestSNSampler.runTest("TestSNSampler:test_init");
 		TestSNSampler.runTest("TestSNSampler:test_start");
 	}

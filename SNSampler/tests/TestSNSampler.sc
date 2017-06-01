@@ -1,11 +1,5 @@
 TestSNSampler : UnitTest {
-	// classvar <testController, <>testModel;
 	var sampler1, sampler2;
-
-	// *initClass {
-	// 	testModel = Ref();
-	// 	testController = SimpleController(testModel);
-	// }
 
 	setUp {
 		var server1 = Server.named.at(\test1) ?? { Server(\test1, NetAddr("127.0.0.1", 57111)) },
@@ -18,10 +12,13 @@ TestSNSampler : UnitTest {
 	}
 
 	tearDown {
-		// "currentMethod tearDown: %\n".postf(currentMethod);
 		switch (currentMethod.class.asSymbol,
 			'TestSNSSampler:test_init', { sampler1.clear };
-			'TestSNSSampler:test_start', { sampler2.clear };
+			'TestSNSSampler:test_start', {
+				sampler2.clear;
+				CVCenter.removeAll;
+				CVCenter.window.close;
+			};
 		)
 	}
 
@@ -36,6 +33,7 @@ TestSNSampler : UnitTest {
 
 	test_start {
 		this.bootServer(sampler2.server);
+		sampler2.start;
 		this.wait({ sampler2.buffersAllocated }, "buffers should have been allocated within 5 seconds", 5);
 		"sampler2.isPlaying: %, server is running: %, sampler2.buffers: %\n".postf(sampler2.isPlaying, sampler2.server.serverRunning, sampler2.buffers);
 		this.assertEquals(sampler2.buffers[0].numFrames, sampler2.server.sampleRate * 7 * 2, "the frames of an allocated buffer should equal sampler2.sampleRate * 7 * 2");
