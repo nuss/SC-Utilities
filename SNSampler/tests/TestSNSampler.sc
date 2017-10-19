@@ -7,8 +7,8 @@ TestSNSampler : UnitTest {
 		// "currentMethod setup: %\n".postf(currentMethod);
 		sampler1 = SNSampler(tempo: 2, beatsPerBar: 7, numBars: 2, numBuffers: 7, server: server1);
 		sampler2 = SNSampler(tempo: 2, beatsPerBar: 7, numBars: 2, numBuffers: 7, server: server2);
-		sampler1.server.dumpOSC(3);
-		sampler2.server.dumpOSC(3);
+		// sampler1.server.dumpOSC(3);
+		// sampler2.server.dumpOSC(3);
 	}
 
 	tearDown {
@@ -17,8 +17,11 @@ TestSNSampler : UnitTest {
 			'TestSNSSampler:test_start', {
 				sampler2.clear;
 				CVCenter.removeAll;
-				CVCenter.window.close;
-			};
+				if (CVCenter.window.notNil and: { CVCenter.window.isClosed.not }) {
+					CVCenter.window.close;
+				};
+				Window.allWindows.select{ |w| w.name == "sampler in" }.do(_.close);
+			}
 		)
 	}
 
@@ -34,7 +37,7 @@ TestSNSampler : UnitTest {
 	test_start {
 		this.bootServer(sampler2.server);
 		sampler2.start;
-		this.wait({ sampler2.buffersAllocated }, "buffers should have been allocated within 5 seconds", 5);
+		this.wait({ sampler2.buffersAllocated }, "buffers should have been allocated within 1 second", 1);
 		"sampler2.isPlaying: %, server is running: %, sampler2.buffers: %\n".postf(sampler2.isPlaying, sampler2.server.serverRunning, sampler2.buffers);
 		this.assertEquals(sampler2.buffers[0].numFrames, sampler2.server.sampleRate * 7 * 2, "the frames of an allocated buffer should equal sampler2.sampleRate * 7 * 2");
 		this.assertEquals(sampler2.buffers.collect(_.bufnum), [0, 1, 2, 3, 4, 5, 6], "the bufnums of the allocated buffers should equal [0, 1, 2, 3, 4, 5, 6]");
