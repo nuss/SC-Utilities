@@ -1,5 +1,5 @@
 SNRecorder {
-	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "";
+	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "", myServer;
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
@@ -7,22 +7,29 @@ SNRecorder {
 	classvar recSynth;
 
 	*setSynthDef { |server|
+		var synthDef;
+		// FIXME: keep separate SynthDefs for each number of channels setting?
+		// switching number of channels currently not possible
 		SynthDescLib.at(\snSynthDefs) ?? {
 			// store the synth in a separate SynthDescLib in order to avoid name clashes
-			SynthDescLib(\snSynthDefs, [server]);
+			server !? { Server.all.add(server) };
+			SynthDescLib(\snSynthDefs).servers_(Server.all);
 		};
-		SynthDef(\snRecorder, { |in, bufnum|
+		synthDef = SynthDef(\snRecorder_ ++ this.recorderNChans, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
-		}).add(\snSynthDefs);
+		});
+		"does lib exist: %, server: %\n".postf(SynthDescLib.getLib(\snSynthDefs), SynthDescLib.getLib(\snSynthDefs).servers);
+		// synthDef.inspect;
+		synthDef.add(\snSynthDefs);
 	}
 
 	*recorderNChans_ { |numChannels|
 		recorderNChans = numChannels.asInteger;
-		this.setSynthDef;
+		this.setSynthDef(myServer.value ?? { Server.default });
 	}
 
 	*front {
-		var myServer, nChansText, nChans, chansOffsetText, chansOffset;
+		var /*myServer, */nChansText, nChans, chansOffsetText, chansOffset;
 		var bufSizeText, bufSize;
 		var recordNameText, recordName;
 		var pathText, path;
@@ -127,6 +134,7 @@ SNRecorder {
 			window.front;
 		};
 
+		// think: myServers is an array now?
 		SynthDescLib.global[\snRecorder] ?? {
 			this.setSynthDef(myServers[myServer.value]);
 		};
@@ -143,7 +151,7 @@ SNRecorder {
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);
-				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
+				recSynth = Synth.tail(nil, ("snRecorder_" ++ recorderNChans).asSymbol, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
 						stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
