@@ -8,23 +8,15 @@ SNRecorder {
 
 	*setSynthDef { |server|
 		var synthDef;
-		// FIXME: keep separate SynthDefs for each number of channels setting?
-		// switching number of channels currently not possible
-		"server: %, class: %\n".postf(server, server.class);
-
 		SynthDescLib.at(\snSynthDefs) ?? {
-			// store the synth in a separate SynthDescLib in order to avoid name clashes
-			"Server.all before: %\n".postf(Server.all);
 			if (Server.all.includes(server).not) {
 				Server.all.add(server);
 			};
-			"Server.all after: %\n".postf(Server.all);
 			SynthDescLib(\snSynthDefs).servers_(Server.all);
 		};
 		synthDef = SynthDef(\snRecorder_ ++ this.recorderNChans, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
 		});
-		// "does lib exist: %, server: %\n".postf(SynthDescLib.getLib(\snSynthDefs), SynthDescLib.getLib(\snSynthDefs).servers);
 		// synthDef.inspect;
 		synthDef.add(\snSynthDefs);
 	}
@@ -154,7 +146,6 @@ SNRecorder {
 				var time;
 
 				recBuffer = Buffer.alloc(server, bufSize, numChannels);
-				"recBuffer numChannels: %\n".postf(numChannels);
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ ".wav").standardizePath, "wav", "float", leaveOpen: true);

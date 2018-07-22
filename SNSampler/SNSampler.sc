@@ -123,10 +123,12 @@ SNSampler : AbstractSNSampler {
 					CVCenter.cvWidgets[(nameString + "tempo").asSymbol].addAction('tempo feedback', { |cv|
 						SNSampler.oscFeedbackAddr.sendMsg('/sampler/tempo', cv.input);
 					});
-					this.class.oscFeedbackAddr.sendMsg('/sampler/toggle', 1)
+					CVCenter.cvWidgets[(nameString + "in").asSymbol].addAction('inbus feedback', { |cv|
+						SNSampler.oscFeedbackAddr.sendMsg('/sampler/in_bus', cv.value);
+					});
+					this.class.oscFeedbackAddr.sendMsg('/sampler/toggle', 0)
 					.sendMsg('/sampler/inlevel', CVCenter.at((nameString + "level").asSymbol).input)
 					.sendMsg('/sampler/tempo', CVCenter.at((nameString + "tempo").asSymbol).input);
-
 
 					bufnums.do { |bn|
 						OSCdef(("buf" + bn).asSymbol, { this.zero(bn) }, ("/buf" ++ bn ++ "/zero").asSymbol);
@@ -217,7 +219,7 @@ SNSampler : AbstractSNSampler {
 				\bufnum, activeBuffersSeq,
 				\tempo, CVCenter.use(
 					nameString + "tempo",
-					#[1, 4, \lin],
+					#[1.0, 4.0, \lin],
 					this.tempo,
 					name
 				),
@@ -228,7 +230,8 @@ SNSampler : AbstractSNSampler {
 						} {
 							this.class.oscFeedbackAddr.sendMsg("/buf"++b.bufnum++"/recording", 0);
 						}
-					}
+					};
+					// this.class.oscFeedbackAddr.sendMsg("/sampler/in_bus", ev.in.asInteger);
 				},
 				\trace, trace
 			);
