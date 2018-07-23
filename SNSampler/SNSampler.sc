@@ -61,7 +61,15 @@ SNSampler : AbstractSNSampler {
 
 					recorder = NodeProxy.audio(server, 1).clock_(clock).quant_([beatsPerBar, 0, 0, 1]);
 					recorder[0] = {
-						soundIn = LeakDC.ar(SoundIn.ar(\in.kr(0), \inputLevel.kr(0.5))).tanh.scope("sampler in");
+						var sig = LeakDC.ar(SoundIn.ar(\in.kr(0)));
+						soundIn = Compander.ar(
+							sig, sig,
+							\compThresh.kr(0.5),
+							\slopeBelow.kr(1.0),
+							\slopeAbove.kr(0.5),
+							\clampTime.kr(0.01),
+							\relaxTime.kr(0.01)
+						).scope("sampler in");
 						BufWr.ar(
 							soundIn,
 							\bufnum.kr(0),
@@ -216,6 +224,33 @@ SNSampler : AbstractSNSampler {
 					0.5,
 					name
 				),
+				\compThresh, CVCenter.use(
+					(nameString + "compressor threshold").asSymbol,
+					value: 1.0,
+					tab: name
+				),
+				\slopeBelow, CVCenter.use(
+					(nameString + "slope below").asSymbol,
+					value: 0.3,
+					tab: name
+				),
+				\slopeAbove, CVCenter.use(
+					(nameString + "slope above").asSymbol,
+					ControlSpec(0.0, 2.0, \lin, 0.0, 1.0),
+					tab: name
+				),
+				\clampTime, CVCenter.use(
+					(nameString + "clamp time").asSymbol,
+					ControlSpec(0.001, 0.1),
+					0.001,
+					name
+				),
+				\relaxTime, CVCenter.use(
+					(nameString + "relax time").asSymbol,
+					ControlSpec(0.002, 0.2),
+					0.2,
+					tab: name
+				),
 				\bufnum, activeBuffersSeq,
 				\tempo, CVCenter.use(
 					nameString + "tempo",
@@ -264,7 +299,7 @@ SNSampler : AbstractSNSampler {
 
 			buffersAllocated = true;
 			// resume sampler
-			CVCenter.at((nameString + "on/off").asSymbol).input_(1);
+			CVCenter.at((nameString + "on/off").asSymbol).input_(0);
 		}
 	}
 
