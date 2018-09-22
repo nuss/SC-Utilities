@@ -11,11 +11,12 @@ CSSColorTranslator {
 +Color {
 
 	*fromHexOrName { |color|
-		if (CSSColorTranslator.colorTableName.keys.includes(color.asString)) {
-			^Color.fromHexString(CSSColorTranslator.colorNameTable[color.asString])
+		if (CSSColorTranslator.colorTableName.keys.includes(color.asString.toLower)) {
+			^Color.fromHexString(CSSColorTranslator.colorNameTable[color.asString.toLower])
 		} {
-			^Color.fromHexString(color.asString)
+			^Color.fromHexString(color.asString.toLower)
 		}
 	}
 
 }
+cd
