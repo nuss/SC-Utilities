@@ -11,7 +11,7 @@ CSSColorTranslator {
 +Color {
 
 	*fromHexOrName { |color|
-		if (CSSColorTranslator.colorTableName.keys.includes(color.asString.toLower)) {
+		if (CSSColorTranslator.colorNameTable.keys.includes(color.asString.toLower)) {
 			^Color.fromHexString(CSSColorTranslator.colorNameTable[color.asString.toLower])
 		} {
 			^Color.fromHexString(color.asString.toLower)
@@ -19,4 +19,3 @@ CSSColorTranslator {
 	}
 
 }
-cd
