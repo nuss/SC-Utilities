@@ -15,11 +15,16 @@ CSSColorTranslator {
 +Color {
 
 	*fromHexOrName { |color|
+		var isValidHexString;
 		color = color.asString.toLower;
+		isValidHexString = "#[0-9a-fA-F]{6}".matchRegexp(color);
+
 		if (CSSColorTranslator.colorNameTable.keys.includes(color)) {
-			^Color.fromHexString(CSSColorTranslator.colorNameTable[color])
+			^this.fromHexString(CSSColorTranslator.colorNameTable[color])
 		} {
-			^Color.fromHexString(color)
+			if (isValidHexString) {
+				^this.fromHexString(color);
+			} { ^nil }
 		}
 	}
 
