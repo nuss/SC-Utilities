@@ -3,7 +3,6 @@ PingPongL {
 		var buffer, delaySamps, phase, frames, feedbackChannels, delayedSignals;
 
 		// inputs.poll;
-
 		buffer = LocalBuf(SampleRate.ir * 2, inputs.size);
 		delaySamps = max(0, delayTime * SampleRate.ir - ControlDur.ir).round;
 		frames = BufFrames.kr(buffer);
