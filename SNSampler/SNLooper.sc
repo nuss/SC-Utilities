@@ -1,11 +1,12 @@
 SNLooper : AbstractSNSampler {
 	classvar <all;
-	var <name, <clock, <numBuffers, <bufLength, <numChannels, <server;
+	var <name, <clock, <numBuffers, <bufLength, <numChannels, <>randomBufferSelect, <server;
 	var <buffers, recorder, <loopLengths;
 	var <sample = false, samplingController, samplingModel, onTime, offTime;
+	var loopCVs, usedBuffers;
 
-	*new { |name, clock, numBuffers, bufLength, numChannels, server, oscFeedbackAddr|
-		^super.newCopyArgs(name, clock ? TempoClock.default, numBuffers ? 5, bufLength ? 5, numChannels ? 1, server ? Server.default).init(oscFeedbackAddr);
+	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr|
+		^super.newCopyArgs(name, clock ? TempoClock.default, numBuffers ? 5, bufLength ? 5, numChannels ? 1, randomBufferSelect ? false, server ? Server.default).init(oscFeedbackAddr);
 	}
 
 	init { |oscFeedbackAddr|
@@ -21,7 +22,8 @@ SNLooper : AbstractSNSampler {
 		if (name.isNil) {
 			name = ("looper" + (all.size + 1)).asSymbol
 		} {
-			if (all.includesKey(name.asSymbol)) {
+			name = name.asSymbol;
+			if (all.includesKey(name)) {
 				Error("A looper under the name '%' already exists".format(name)).throw;
 			}
 		};
@@ -29,38 +31,50 @@ SNLooper : AbstractSNSampler {
 		server.waitForBoot {
 			var in;
 			buffers = Buffer.allocConsecutive(numBuffers, server, bufLength * server.sampleRate, numChannels);
-			loopLengths = nil ! numBuffers;
+			loopLengths = 0 ! numBuffers;
+			usedBuffers = false ! numBuffers;
 			server.sync;
 			recorder = NodeProxy.audio(server, numChannels).pause;
 			if (numChannels < 2) { in = 0 } { in = 0!numChannels };
 			recorder[0] = {
-				var soundIn = LeakDC.ar(SoundIn.ar(\in.kr(in))).scope("looper in");
+				var soundIn = SoundIn.ar(\in.kr(in)).scope("looper in");
 				BufWr.ar(
 					soundIn,
 					\bufnum.kr(0),
-					// Phasor will ramp from start to end and then jump back to start
-					// if this.tempo != 1 we have to move through the buffer at a different rate
-					Phasor.ar(\trig.tr(0).poll, BufRateScale.kr(\bufnum.kr(buffers[0].bufnum)), 0, BufFrames.kr(\bufnum.kr(0))).poll
+					Phasor.ar(\trig.tr(0), BufRateScale.kr(\bufnum.kr(buffers[0].bufnum)), 0, BufFrames.kr(\bufnum.kr(0)))
 				);
 				// play silently
-				Silent.ar;
+				// Silent.ar;
+				soundIn * \bypassAmp.kr(1);
 			};
-			this.cvCenterAddWidget("-start/stop", 0, #[0, 1, \lin, 1, 0], { |cv|
-				var samplingActive = cv.value.asBoolean;
-				if ((samplingActive and: { sample.not }).or(
-					samplingActive.not and: { sample }
-				)) {
-					this.sample_(samplingActive)
-				}
-			}, 0, 0);
-			this.cvCenterAddWidget("-in", 0, \in, { |cv|
-				recorder.set(\in, cv.value)
-			});
-			this.cvCenterAddWidget("-set bufnum", 0, [0, numBuffers - 1, \lin, 1, 0], { |cv|
-				recorder.set(\bufnum, buffers[cv.value].bufnum);
-			});
+			CVCenter.scv.loopers ?? {
+				CVCenter.scv.loopers = ();
+				CVCenter.scv.loopers.put(name, (looper: this, recorder: recorder));
+			};
+			this.createWidgets;
 			this.prInitSampler;
+			this.prSetUpLoops;
 		}
+	}
+
+	createWidgets {
+		this.cvCenterAddWidget("-start/stop", 0, #[0, 1, \lin, 1, 0], "{ |cv|
+			var samplingActive = cv.value.asBoolean;
+			if ((samplingActive and: { CVCenter.scv.loopers['%'].looper.sample.not }).or(
+				samplingActive.not and: { CVCenter.scv.loopers['%'].looper.sample }
+			)) {
+				CVCenter.scv.loopers['%'].looper.sample_(samplingActive)
+			}
+		}".format(name, name, name), 0, 0);
+		this.cvCenterAddWidget("-in", 0, \in, "{ |cv|
+			CVCenter.scv.loopers['%'].recorder.set(\\in, cv.value)
+		}".format(name));
+		// this.cvCenterAddWidget("-set bufnum", 0, [0, numBuffers - 1, \lin, 1, 0], "{ |cv|
+		// 	CVCenter.scv.loopers['%'].recorder.set(\\bufnum, CVCenter.scv.loopers['%'].buffers[cv.value.asInteger].bufnum);
+		// }".format(name, name));
+		this.cvCenterAddWidget("-set bufnum", 0, [0, numBuffers - 1, \lin, 1, 0], { |cv|
+			recorder.set(\bufnum, buffers[cv.value].bufnum);
+		});
 	}
 
 	prInitSampler {
@@ -74,13 +88,21 @@ SNLooper : AbstractSNSampler {
 				recorder.resume;
 				CVCenter.at((name ++ "-start/stop").asSymbol).value_(1);
 			} {
-				var bufnum;
+				var bufnum, amps, durs, ends;
 				offTime = Main.elapsedTime;
 				recorder.pause;
-				// reset phasor
+				// reset phasor before next sampling
 				recorder.set(\trig, 1);
 				bufnum = recorder.get(\bufnum);
-				bufIndex = buffers.detect{ |buf| buf.bufnum == bufnum }.bufnum;
+				// bufffers may begin with other bufnums than 0,
+				// so we use the index in the buffers array
+				bufIndex = buffers.detectIndex{ |buf| buf.bufnum == bufnum };
+				usedBuffers[bufIndex] = true;
+				// reset if all buffers have been filled already
+				if (usedBuffers.select { |bool| bool == true }.size == numBuffers) {
+					usedBuffers = false ! numBuffers;
+				};
+				// usedBuffers.postln;
 				length = offTime - onTime;
 				// "bufIndex: %\n".postf(bufIndex);
 				if (length > bufLength) {
@@ -88,14 +110,59 @@ SNLooper : AbstractSNSampler {
 				} {
 					loopLengths[bufIndex] = length;
 				};
-				nextBuf = bufIndex + 1 % numBuffers;
-				// "next buffer: %\n".postf(nextBuf);
+				this.prSetSpecConstraints(bufIndex, loopLengths[bufIndex]);
+				// "loopCVs.start.spec.maxval: %\n
+				// loopCVs.end.spec.maxval: %\n
+				// loopCVs.dur.spec.maxval: %\n".postf(
+				// 	loopCVs.start.spec.maxval, loopCVs.end.spec.maxval, loopCVs.dur.spec.maxval
+				// );
+				Ndef((name ++ "Out").asSymbol).play;
+				this.prSetCVValues(bufIndex);
+				if (this.randomBufferSelect.not) {
+					nextBuf = bufIndex + 1 % numBuffers;
+				} {
+					nextBuf = usedBuffers.selectIndex{ |bool| bool == false }.choose;
+				};
 				recorder.set(\bufnum, buffers[nextBuf].bufnum);
 				CVCenter.at((name ++ "-set bufnum").asSymbol).value_(nextBuf);
+				// "buffers[%].bufnum: %\n".postf(nextBuf, buffers[nextBuf].bufnum);
 				onTime = nil;
-				CVCenter.at((name ++ "-start/stop").asSymbol).value_(0);
+				CVCenter.at((name ++ "-start/stop").asSymbol).input_(0);
+				"done".postln;
 			}
 		})
+	}
+
+	prSetSpecConstraints { |index, length|
+		loopCVs.start.spec.maxval[index] = length / bufLength;
+		loopCVs.end.spec.maxval[index] = length / bufLength;
+		loopCVs.dur.spec.maxval = length;
+		/*var startSpec = loopCVs.start.spec;
+		var endSpec = loopCVs.end.spec;
+		var durSpec = loopCVs.dur.spec;
+		var startMax = startSpec.maxval;
+		var endMax = endSpec.maxval;
+		var durMax = durSpec.maxval;
+
+		[startMax, startSpec, endMax, endSpec].pairsDo { |max, spec|
+			max[index] = length / bufLength;
+			spec.maxval_(max);
+		};
+		durMax[index] = length;
+		durSpec.maxval_(durMax);*/
+	}
+
+	prSetCVValues { |bufIndex|
+		var amps, durs, ends;
+		amps = loopCVs.amp.value;
+		amps[bufIndex] = 1;
+		loopCVs.amp.value_(amps);
+		durs = loopCVs.dur.value;
+		durs[bufIndex] = loopLengths[bufIndex];
+		loopCVs.dur.value_(durs);
+		ends = loopCVs.end.input;
+		ends[bufIndex] = 1;
+		loopCVs.end.input_(ends);
 	}
 
 	sample_ { |onOff|
@@ -111,5 +178,71 @@ SNLooper : AbstractSNSampler {
 		CVCenter.at((name ++ "-set bufnum").asSymbol).value_(bufnum);
 	}
 
+	prSetUpLoops {
+		loopCVs = ();
+		loopCVs.start = CVCenter.use((name ++ "Start").asSymbol, [0, bufLength] ! numBuffers, 0, (name ++ "Loops").asSymbol);
+		loopCVs.end = CVCenter.use((name ++ "End").asSymbol, [0, bufLength] ! numBuffers, bufLength, (name ++ "Loops").asSymbol);
+		loopCVs.loopRate = CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
+		loopCVs.atk = CVCenter.use((name ++ "Atk").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		loopCVs.sust = CVCenter.use((name ++ "Sust").asSymbol, #[0.1, 1.0] ! numBuffers, 1, (name ++ "Loops").asSymbol);
+		loopCVs.rel = CVCenter.use((name ++ "Rel").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		loopCVs.dec = CVCenter.use((name ++ "Dec").asSymbol, #[0.02, 7, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		loopCVs.curve = CVCenter.use((name ++ "Curve").asSymbol, #[-4, 4] ! numBuffers, 0, (name ++ "Loops").asSymbol);
+		loopCVs.dur = CVCenter.use((name ++ "Dur").asSymbol, [0.1, bufLength] ! numBuffers, bufLength, (name ++ "Loops").asSymbol);
+		loopCVs.amp = CVCenter.use((name ++ "GrainAmp").asSymbol, \amp ! numBuffers, tab: (name ++ "Loops").asSymbol);
 
+		Pdef((name ++ "Loops").asSymbol,
+			Ppar({ |i|
+				Pbind(
+					\instrument, \grain,
+					// buufers in the buffers array may start with a bufnum higher than 0
+					// so we check the bufnum by addressing the buffer at index i
+					\bufnum, buffers[i].bufnum.postln,
+					\start, CVCenter.cvWidgets[(name ++ "Start").asSymbol].split[i],
+					\end, CVCenter.cvWidgets[(name ++ "End").asSymbol].split[i],
+					\rate, CVCenter.cvWidgets[(name ++ "Rate").asSymbol].split[i],
+					\atk, CVCenter.cvWidgets[(name ++ "Atk").asSymbol].split[i],
+					\sust, CVCenter.cvWidgets[(name ++ "Sust").asSymbol].split[i],
+					\rel, CVCenter.cvWidgets[(name ++ "Rel").asSymbol].split[i],
+					\dec, CVCenter.cvWidgets[(name ++ "Dec").asSymbol].split[i],
+					\curve, CVCenter.cvWidgets[(name ++ "Curve").asSymbol].split[i],
+					\dur, CVCenter.cvWidgets[(name ++ "Dur").asSymbol].split[i]/*.trace(prefix: i.asString ++ ": ")*/,
+					\amp, CVCenter.cvWidgets[(name ++ "GrainAmp").asSymbol].split[i],
+					\channelOffset, i
+				)
+			} ! numBuffers)
+		);
+
+		Ndef((name ++ "Loops").asSymbol).mold(numBuffers, \audio, \elastic);
+		Ndef((name ++ "Loops").asSymbol)[0] = Pdef((name ++ "Loops").asSymbol);
+		Ndef((name ++ "Out").asSymbol)[0] = {
+			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), (name ++ \Amp).asSymbol.kr(1), (name ++ \Center).asSymbol.kr(0.0))
+		};
+
+		Spec.add((name ++ \Center).asSymbol, \pan);
+		Spec.add((name ++ \Amp).asSymbol, \amp);
+		Ndef((name ++ "Out").asSymbol).cvcGui(prefix: (name ++ \Out).asSymbol, excemptArgs: [\in]);
+
+		Ndef((name ++ "Out").asSymbol) <<> Ndef((name ++ "Loops").asSymbol);
+	}
+
+	resetBuffers {
+		buffers.do(_.zero);
+		[\Start, \End, \Dur].do { |w|
+			CVCenter.at((name ++ w).asSymbol).spec.maxval_(bufLength);
+			usedBuffers = false ! numBuffers;
+		}
+	}
+
+	clear { |fadeTime=0.2|
+		Ndef((name ++ \Out).asSymbol).clear(fadeTime);
+		fork {
+			fadeTime.wait;
+			Ndef((name ++ \Loops).asSymbol).clear;
+			Pdef((name ++ \Loops).asSymbol).clear;
+			buffers.do { |b| b.close; b.free };
+			recorder.clear;
+			all[name] = nil;
+		}
+	}
 }
