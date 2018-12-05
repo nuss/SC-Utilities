@@ -4,6 +4,7 @@ SNLooper : AbstractSNSampler {
 	var <buffers, recorder, <loopLengths;
 	var <sample = false, samplingController, samplingModel, onTime, offTime;
 	var loopCVs, usedBuffers;
+	var <>debug = false;
 
 	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr|
 		^super.newCopyArgs(name, clock ? TempoClock.default, numBuffers ? 5, bufLength ? 5, numChannels ? 1, randomBufferSelect ? false, server ? Server.default).init(oscFeedbackAddr);
@@ -191,11 +192,36 @@ SNLooper : AbstractSNSampler {
 		loopCVs.dur = CVCenter.use((name ++ "Dur").asSymbol, [0.1, bufLength] ! numBuffers, bufLength, (name ++ "Loops").asSymbol);
 		loopCVs.amp = CVCenter.use((name ++ "GrainAmp").asSymbol, \amp ! numBuffers, tab: (name ++ "Loops").asSymbol);
 
+		this.initPdef;
+
+		Ndef((name ++ "Out").asSymbol)[0] = {
+			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), (name ++ \Amp).asSymbol.kr(1), (name ++ \Center).asSymbol.kr(0.0))
+		};
+
+		Spec.add((name ++ \Center).asSymbol, \pan);
+		Spec.add((name ++ \Amp).asSymbol, \amp);
+		Ndef((name ++ "Out").asSymbol).cvcGui(prefix: (name ++ \Out).asSymbol, excemptArgs: [\in]);
+
+		Ndef((name ++ "Out").asSymbol) <<> Ndef((name ++ "Loops").asSymbol);
+	}
+
+	initPdef {
+		var trace = PatternProxy.new;;
+		if (this.debug) {
+			trace.setSource(
+				Pfunc { |e|
+					"index: %, bufnum: %, dur: %\n".format(e.channelOffset, e.bufnum, e.dur)
+				}.trace
+			)
+		} {
+			trace.setSource(0)
+		};
+
 		Pdef((name ++ "Loops").asSymbol,
 			Ppar({ |i|
 				Pbind(
 					\instrument, \grain,
-					// buufers in the buffers array may start with a bufnum higher than 0
+					// buffers in the buffers array may start with a bufnum higher than 0
 					// so we check the bufnum by addressing the buffer at index i
 					\bufnum, buffers[i].bufnum.postln,
 					\start, CVCenter.cvWidgets[(name ++ "Start").asSymbol].split[i],
@@ -208,22 +234,14 @@ SNLooper : AbstractSNSampler {
 					\curve, CVCenter.cvWidgets[(name ++ "Curve").asSymbol].split[i],
 					\dur, CVCenter.cvWidgets[(name ++ "Dur").asSymbol].split[i]/*.trace(prefix: i.asString ++ ": ")*/,
 					\amp, CVCenter.cvWidgets[(name ++ "GrainAmp").asSymbol].split[i],
-					\channelOffset, i
+					\channelOffset, i,
+					\trace, trace
 				)
 			} ! numBuffers)
 		);
 
 		Ndef((name ++ "Loops").asSymbol).mold(numBuffers, \audio, \elastic);
 		Ndef((name ++ "Loops").asSymbol)[0] = Pdef((name ++ "Loops").asSymbol);
-		Ndef((name ++ "Out").asSymbol)[0] = {
-			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), (name ++ \Amp).asSymbol.kr(1), (name ++ \Center).asSymbol.kr(0.0))
-		};
-
-		Spec.add((name ++ \Center).asSymbol, \pan);
-		Spec.add((name ++ \Amp).asSymbol, \amp);
-		Ndef((name ++ "Out").asSymbol).cvcGui(prefix: (name ++ \Out).asSymbol, excemptArgs: [\in]);
-
-		Ndef((name ++ "Out").asSymbol) <<> Ndef((name ++ "Loops").asSymbol);
 	}
 
 	resetBuffers {
