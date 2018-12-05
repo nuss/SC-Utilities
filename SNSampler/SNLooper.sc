@@ -138,19 +138,6 @@ SNLooper : AbstractSNSampler {
 		loopCVs.start.spec.maxval[index] = length / bufLength;
 		loopCVs.end.spec.maxval[index] = length / bufLength;
 		loopCVs.dur.spec.maxval = length;
-		/*var startSpec = loopCVs.start.spec;
-		var endSpec = loopCVs.end.spec;
-		var durSpec = loopCVs.dur.spec;
-		var startMax = startSpec.maxval;
-		var endMax = endSpec.maxval;
-		var durMax = durSpec.maxval;
-
-		[startMax, startSpec, endMax, endSpec].pairsDo { |max, spec|
-			max[index] = length / bufLength;
-			spec.maxval_(max);
-		};
-		durMax[index] = length;
-		durSpec.maxval_(durMax);*/
 	}
 
 	prSetCVValues { |bufIndex|
@@ -206,7 +193,7 @@ SNLooper : AbstractSNSampler {
 	}
 
 	initPdef {
-		var trace = PatternProxy.new;;
+		var trace = PatternProxy.new;
 		if (this.debug) {
 			trace.setSource(
 				Pfunc { |e|
