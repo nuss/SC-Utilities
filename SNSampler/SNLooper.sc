@@ -3,7 +3,7 @@ SNLooper : AbstractSNSampler {
 	var <name, <clock, <numBuffers, <bufLength, <numChannels, <>randomBufferSelect, <server;
 	var <buffers, recorder, <loopLengths;
 	var <sample = false, samplingController, samplingModel, onTime, offTime;
-	var loopCVs, usedBuffers;
+	var usedBuffers;
 	var <>debug = false;
 
 	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr|
@@ -32,7 +32,7 @@ SNLooper : AbstractSNSampler {
 		server.waitForBoot {
 			var in;
 			buffers = Buffer.allocConsecutive(numBuffers, server, bufLength * server.sampleRate, numChannels);
-			loopLengths = 0 ! numBuffers;
+			loopLengths = bufLength ! numBuffers;
 			usedBuffers = false ! numBuffers;
 			server.sync;
 			recorder = NodeProxy.audio(server, numChannels).pause;
@@ -135,22 +135,39 @@ SNLooper : AbstractSNSampler {
 	}
 
 	prSetSpecConstraints { |index, length|
-		loopCVs.start.spec.maxval[index] = length / bufLength;
-		loopCVs.end.spec.maxval[index] = length / bufLength;
-		loopCVs.dur.spec.maxval = length;
+		CVCenter.at((name ++ \Start).asSymbol).spec.maxval[index] = length / bufLength;
+		CVCenter.at((name ++ \End).asSymbol).spec.maxval[index] = length / bufLength;
+		// "before - index: %, length: %, loopCVs.dur.spec.maxval[index]: %\n".postf(index, length, loopCVs.dur.spec.maxval[index]);
+		CVCenter.at((name ++ \Dur).asSymbol).spec.maxval[index] = length;
+		// "after - index: %, length: %, loopCVs.dur.spec.maxval[index]: %\n".postf(index, length, loopCVs.dur.spec.maxval[index]);
+
+		if (this.debug) {
+			"buffer index: %\ndur maxval: %\n".postf(
+				index,
+				CVCenter.at((name ++ \Start).asSymbol).spec.maxval,
+				CVCenter.at((name ++ \End).asSymbol).spec.maxval,
+				CVCenter.at((name ++ \Dur).asSymbol).spec.maxval
+			)
+		}
 	}
 
 	prSetCVValues { |bufIndex|
 		var amps, durs, ends;
-		amps = loopCVs.amp.value;
+		amps = CVCenter.at((name ++ \GrainAmp).asSymbol).value;
 		amps[bufIndex] = 1;
-		loopCVs.amp.value_(amps);
-		durs = loopCVs.dur.value;
+		CVCenter.at((name ++ \GrainAmp).asSymbol).value_(amps);
+		durs = CVCenter.at((name ++ \Dur).asSymbol).value;
 		durs[bufIndex] = loopLengths[bufIndex];
-		loopCVs.dur.value_(durs);
-		ends = loopCVs.end.input;
-		ends[bufIndex] = 1;
-		loopCVs.end.input_(ends);
+		CVCenter.at((name ++ \Dur).asSymbol).value_(durs);
+		CVCenter.at((name ++ \End).asSymbol).input_(1);
+
+		if (this.debug) {
+			"buffer index: %\ndurs value: %\nends value: %\n".postf(
+				bufIndex,
+				CVCenter.at((name ++ \Dur).asSymbol).value,
+				CVCenter.at((name ++ \End).asSymbol).value
+			)
+		}
 	}
 
 	sample_ { |onOff|
@@ -167,17 +184,16 @@ SNLooper : AbstractSNSampler {
 	}
 
 	prSetUpLoops {
-		loopCVs = ();
-		loopCVs.start = CVCenter.use((name ++ "Start").asSymbol, [0, bufLength] ! numBuffers, 0, (name ++ "Loops").asSymbol);
-		loopCVs.end = CVCenter.use((name ++ "End").asSymbol, [0, bufLength] ! numBuffers, bufLength, (name ++ "Loops").asSymbol);
-		loopCVs.loopRate = CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
-		loopCVs.atk = CVCenter.use((name ++ "Atk").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
-		loopCVs.sust = CVCenter.use((name ++ "Sust").asSymbol, #[0.1, 1.0] ! numBuffers, 1, (name ++ "Loops").asSymbol);
-		loopCVs.rel = CVCenter.use((name ++ "Rel").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
-		loopCVs.dec = CVCenter.use((name ++ "Dec").asSymbol, #[0.02, 7, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
-		loopCVs.curve = CVCenter.use((name ++ "Curve").asSymbol, #[-4, 4] ! numBuffers, 0, (name ++ "Loops").asSymbol);
-		loopCVs.dur = CVCenter.use((name ++ "Dur").asSymbol, [0.1, bufLength] ! numBuffers, bufLength, (name ++ "Loops").asSymbol);
-		loopCVs.amp = CVCenter.use((name ++ "GrainAmp").asSymbol, \amp ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Start").asSymbol, [0!numBuffers, loopLengths/bufLength], tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "End").asSymbol, [0!numBuffers, loopLengths/bufLength], loopLengths/bufLength, (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Atk").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Sust").asSymbol, #[0.1, 1.0] ! numBuffers, 1, (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Rel").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Dec").asSymbol, #[0.02, 7, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Curve").asSymbol, #[-4, 4] ! numBuffers, 0, (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "Dur").asSymbol, [0.1!numBuffers, loopLengths], bufLength, (name ++ "Loops").asSymbol);
+		CVCenter.use((name ++ "GrainAmp").asSymbol, \amp ! numBuffers, tab: (name ++ "Loops").asSymbol);
 
 		this.initPdef;
 
@@ -203,6 +219,10 @@ SNLooper : AbstractSNSampler {
 		} {
 			trace.setSource(0)
 		};
+
+		CVCenter.at((name ++ \Dur).asSymbol).spec_([0.1!numBuffers, loopLengths].asSpec);
+		CVCenter.at((name ++ \Start).asSymbol).spec_([0!numBuffers, loopLengths/bufLength].asSpec);
+		CVCenter.at((name ++ \End).asSymbol).spec_([0!numBuffers, loopLengths/bufLength, \lin, 0.0, loopLengths/bufLength].asSpec);
 
 		Pdef((name ++ "Loops").asSymbol,
 			Ppar({ |i|
