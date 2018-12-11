@@ -6,11 +6,18 @@ SNLooper : AbstractSNSampler {
 	var usedBuffers;
 	var <>debug = false;
 
-	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr|
-		^super.newCopyArgs(name, clock ? TempoClock.default, numBuffers ? 5, bufLength ? 5, numChannels ? 1, randomBufferSelect ? false, server ? Server.default).init(oscFeedbackAddr);
+	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr, volumeControlNode = 1000|
+		^super.newCopyArgs(
+			name,
+			clock ? TempoClock.default,
+			numBuffers ? 5, bufLength ? 5,
+			numChannels ? 1,
+			randomBufferSelect ? false,
+			server ? Server.default
+		).init(oscFeedbackAddr, volumeControlNode);
 	}
 
-	init { |oscFeedbackAddr|
+	init { |oscFeedbackAddr, volumeControlNode|
 		[name, clock, numBuffers, bufLength, numChannels, server].postln;
 		oscFeedbackAddr !? {
 			if (oscFeedbackAddr.class !== NetAddr) {
@@ -54,7 +61,7 @@ SNLooper : AbstractSNSampler {
 			};
 			this.createWidgets;
 			this.prInitSampler;
-			this.prSetUpLoops;
+			this.prSetUpLoops(volumeControlNode);
 		}
 	}
 
@@ -183,7 +190,7 @@ SNLooper : AbstractSNSampler {
 		CVCenter.at((name ++ "-set bufnum").asSymbol).value_(bufnum);
 	}
 
-	prSetUpLoops {
+	prSetUpLoops { |volumeControl|
 		CVCenter.use((name ++ "Start").asSymbol, [0!numBuffers, loopLengths/bufLength], tab: (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "End").asSymbol, [0!numBuffers, loopLengths/bufLength], loopLengths/bufLength, (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
@@ -198,7 +205,7 @@ SNLooper : AbstractSNSampler {
 		this.initPdef;
 
 		Ndef((name ++ "Out").asSymbol)[0] = {
-			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), (name ++ \Amp).asSymbol.kr(1), (name ++ \Center).asSymbol.kr(0.0))
+			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), 1, (name ++ \Center).asSymbol.kr(0.0))
 		};
 
 		Spec.add((name ++ \Center).asSymbol, \pan);
@@ -206,6 +213,9 @@ SNLooper : AbstractSNSampler {
 		Ndef((name ++ "Out").asSymbol).cvcGui(prefix: (name ++ \Out).asSymbol, excemptArgs: [\in]);
 
 		Ndef((name ++ "Out").asSymbol) <<> Ndef((name ++ "Loops").asSymbol);
+		Ndef((name ++ "Out").asSymbol)[volumeControl] = \filter -> { |in|
+			in * (name ++ \Amp).asSymbol.kr(1)
+		}
 	}
 
 	initPdef {
@@ -267,6 +277,7 @@ SNLooper : AbstractSNSampler {
 			Pdef((name ++ \Loops).asSymbol).clear;
 			buffers.do { |b| b.close; b.free };
 			recorder.clear;
+			recorder = nil;
 			all[name] = nil;
 		}
 	}
