@@ -28,4 +28,8 @@ CSSColorTranslator {
 		}
 	}
 
+	invert {
+		^Color(1 - this.red, 1 - this.green, 1 - this.blue, this.alpha)
+	}
+
 }
