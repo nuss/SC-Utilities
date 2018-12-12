@@ -10,7 +10,24 @@ AbstractSNSampler {
 				Phasor.ar(t_trig, BufRateScale.kr(bufnum) * rate * tempo, start * BufFrames.kr(bufnum), end * BufFrames.kr(bufnum)),
 				BufFrames.kr(bufnum)
 			);
-			Out.ar(out, outp * env * \grainAmp.kr(0.5));
+			Out.ar(out, outp * env * \grainAmp.kr(1));
+		}).add;
+
+		// fft processing
+		/*SynthDef(\pvrec, { |recBufnum = 0, soundBufnum = 1, localBufLength = 1024, hopSize = 0.25|
+			var in, chain, localBuf;
+			localBuf = LocalBuf(localBufLength);
+			in = PlayBuf.ar(1, soundBufnum, BufRateScale.kr(soundBufnum), loop: 0);
+			chain = FFT(localBuf, in, hopSize, 1);
+			chain = PV_RecordBuf(chain, recBufnum, 0, 1, 0, hopSize, 1);
+		}).add;*/
+
+		SynthDef(\pvgrain, { |cursor = 0, recBufnum = 0, localBufLength = 1024, out = 0, atk = 0.1, sust = 1.0, rel = 0.1, curve = (-4), gate = 1, grainAmp = 1|
+			var in, chain, env, localBuf;
+			localBuf = LocalBuf(localBufLength);
+			env = EnvGen.ar(Env.asr(atk, sust, rel, curve), gate, doneAction: 2);
+			chain = PV_BufRd(localBuf, recBufnum, cursor);
+			Out.ar(out, IFFT(chain, 1) * env * grainAmp);
 		}).add;
 	}
 

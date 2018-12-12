@@ -1,23 +1,24 @@
 SNLooper : AbstractSNSampler {
 	classvar <all;
-	var <name, <clock, <numBuffers, <bufLength, <numChannels, <>randomBufferSelect, <server;
-	var <buffers, recorder, <loopLengths;
+	var <name, <clock, <numBuffers, <bufLength, <numChannels, <>randomBufferSelect, <server, <useFFT;
+	var <buffers, <recorder, <loopLengths;
 	var <sample = false, samplingController, samplingModel, onTime, offTime;
-	var usedBuffers;
+	var usedBuffers, <fftBuffers, fftRecorder;
 	var <>debug = false;
 
-	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, oscFeedbackAddr, volumeControlNode = 1000|
+	*new { |name, clock, numBuffers, bufLength, numChannels, randomBufferSelect, server, useFFT = false, oscFeedbackAddr, volumeControlNode = 1000, localBufSize = 1024, hopSize = 0.25|
 		^super.newCopyArgs(
 			name,
 			clock ? TempoClock.default,
 			numBuffers ? 5, bufLength ? 5,
 			numChannels ? 1,
 			randomBufferSelect ? false,
-			server ? Server.default
-		).init(oscFeedbackAddr, volumeControlNode);
+			server ? Server.default,
+			useFFT
+		).init(oscFeedbackAddr, volumeControlNode, localBufSize, hopSize);
 	}
 
-	init { |oscFeedbackAddr, volumeControlNode|
+	init { |oscFeedbackAddr, volumeControlNode, localBufSize, hopSize|
 		[name, clock, numBuffers, bufLength, numChannels, server].postln;
 		oscFeedbackAddr !? {
 			if (oscFeedbackAddr.class !== NetAddr) {
@@ -37,29 +38,44 @@ SNLooper : AbstractSNSampler {
 		};
 		all = all.put(name.asSymbol, this);
 		server.waitForBoot {
-			var in;
+			var in, bufnum;
 			buffers = Buffer.allocConsecutive(numBuffers, server, bufLength * server.sampleRate, numChannels);
 			loopLengths = bufLength ! numBuffers;
 			usedBuffers = false ! numBuffers;
+			if (useFFT) {
+				fftBuffers = Buffer.allocConsecutive(numBuffers, server, bufLength.calcPVRecSize(localBufSize, hopSize), numChannels)
+			};
 			server.sync;
 			recorder = NodeProxy.audio(server, numChannels).pause;
 			if (numChannels < 2) { in = 0 } { in = 0!numChannels };
 			recorder[0] = {
 				var soundIn = SoundIn.ar(\in.kr(in)).scope("looper in");
+				bufnum = \bufnum.kr(buffers[0].bufnum);
 				BufWr.ar(
 					soundIn,
-					\bufnum.kr(0),
-					Phasor.ar(\trig.tr(0), BufRateScale.kr(\bufnum.kr(buffers[0].bufnum)), 0, BufFrames.kr(\bufnum.kr(0)))
+					bufnum,
+					Phasor.ar(\trig.tr(0), BufRateScale.kr(bufnum), 0, BufFrames.kr(bufnum))
 				);
 				// play silently
 				// Silent.ar;
 				soundIn * \bypassAmp.kr(1);
+			};
+			if (useFFT) {
+				// fftRecorder = Synth(\pvrec, [\recBufnum, fftBuffers[0].bufnum, \soundBufnum, buffers[0].bufnum, localBufSize, hopSize]);
+				recorder[1] = {
+					var in, chain, localBuf;
+					localBuf = LocalBuf(localBufSize);
+					in = PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum), loop: 0).poll;
+					chain = FFT(localBuf, in, hopSize, 1);
+					chain = PV_RecordBuf(chain, \recBufnum.kr(fftBuffers[0].bufnum), 0, 1, 0, hopSize, 1);
+				}
 			};
 			CVCenter.scv.loopers ?? {
 				CVCenter.scv.loopers = ();
 				CVCenter.scv.loopers.put(name, (looper: this, recorder: recorder));
 			};
 			this.createWidgets;
+			server.sync;
 			this.prInitSampler;
 			this.prSetUpLoops(volumeControlNode);
 		}
@@ -132,6 +148,9 @@ SNLooper : AbstractSNSampler {
 					nextBuf = usedBuffers.selectIndex{ |bool| bool == false }.choose;
 				};
 				recorder.set(\bufnum, buffers[nextBuf].bufnum);
+				if (useFFT) {
+					recorder.set(\recBufNum, fftBuffers[nextBuf].bufnum);
+				};
 				CVCenter.at((name ++ "-set bufnum").asSymbol).value_(nextBuf);
 				// "buffers[%].bufnum: %\n".postf(nextBuf, buffers[nextBuf].bufnum);
 				onTime = nil;
@@ -191,18 +210,21 @@ SNLooper : AbstractSNSampler {
 	}
 
 	prSetUpLoops { |volumeControl|
-		CVCenter.use((name ++ "Start").asSymbol, [0!numBuffers, loopLengths/bufLength], tab: (name ++ "Loops").asSymbol);
-		CVCenter.use((name ++ "End").asSymbol, [0!numBuffers, loopLengths/bufLength], loopLengths/bufLength, (name ++ "Loops").asSymbol);
-		CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Atk").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Sust").asSymbol, #[0.1, 1.0] ! numBuffers, 1, (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Rel").asSymbol, #[0.02, 3, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
-		CVCenter.use((name ++ "Dec").asSymbol, #[0.02, 7, \exp] ! numBuffers, tab: (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Curve").asSymbol, #[-4, 4] ! numBuffers, 0, (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "Dur").asSymbol, [0.1!numBuffers, loopLengths], bufLength, (name ++ "Loops").asSymbol);
 		CVCenter.use((name ++ "GrainAmp").asSymbol, \amp ! numBuffers, tab: (name ++ "Loops").asSymbol);
+		if (useFFT.not) {
+			CVCenter.use((name ++ "Start").asSymbol, [0!numBuffers, loopLengths/bufLength], tab: (name ++ "Loops").asSymbol);
+			CVCenter.use((name ++ "End").asSymbol, [0!numBuffers, loopLengths/bufLength], loopLengths/bufLength, (name ++ "Loops").asSymbol);
+			CVCenter.use((name ++ "Rate").asSymbol, #[-2, 2] ! numBuffers, 1.0, tab: (name ++ "Loops").asSymbol);
+		} {
+			CVCenter.use((name ++ \Cursor).asSymbol, [0!numBuffers, loopLengths/bufLength], tab: (name ++ \Loops).asSymbol);
+		};
 
-		this.initPdef;
+		this.initPdef(useFFT);
 
 		Ndef((name ++ "Out").asSymbol)[0] = {
 			Splay.ar(\in.ar(0 ! numBuffers), (name ++ \Spread).asSymbol.kr(0.5), 1, (name ++ \Center).asSymbol.kr(0.0))
@@ -219,7 +241,7 @@ SNLooper : AbstractSNSampler {
 	}
 
 	initPdef {
-		var trace = PatternProxy.new;
+		var pbinds, trace = PatternProxy.new;
 		if (this.debug) {
 			trace.setSource(
 				Pfunc { |e|
@@ -231,11 +253,31 @@ SNLooper : AbstractSNSampler {
 		};
 
 		CVCenter.at((name ++ \Dur).asSymbol).spec_([0.1!numBuffers, loopLengths].asSpec);
-		CVCenter.at((name ++ \Start).asSymbol).spec_([0!numBuffers, loopLengths/bufLength].asSpec);
-		CVCenter.at((name ++ \End).asSymbol).spec_([0!numBuffers, loopLengths/bufLength, \lin, 0.0, loopLengths/bufLength].asSpec);
+		if (useFFT) {
+			CVCenter.at((name ++ \Cursor).asSymbol).spec_([0!numBuffers, loopLengths/bufLength].asSpec);
+		} {
+			CVCenter.at((name ++ \Start).asSymbol).spec_([0!numBuffers, loopLengths/bufLength].asSpec);
+			CVCenter.at((name ++ \End).asSymbol).spec_([0!numBuffers, loopLengths/bufLength, \lin, 0.0, loopLengths/bufLength].asSpec);
+		};
 
-		Pdef((name ++ "Loops").asSymbol,
-			Ppar({ |i|
+		if (useFFT) {
+			pbinds = { |i|
+				Pbind(
+					\instrument, \pvgrain,
+					\recBufnum, fftBuffers[i].bufnum,
+					\cursor, CVCenter.cvWidgets[(name ++ \Cursor).asSymbol].split[i],
+					\atk, CVCenter.cvWidgets[(name ++ "Atk").asSymbol].split[i],
+					\sust, CVCenter.cvWidgets[(name ++ "Sust").asSymbol].split[i],
+					\rel, CVCenter.cvWidgets[(name ++ "Rel").asSymbol].split[i],
+					\curve, CVCenter.cvWidgets[(name ++ \Curve).asSymbol].split[i],
+					\dur, CVCenter.cvWidgets[(name ++ \Dur).asSymbol].split[i],
+					\grainAmp, CVCenter.cvWidgets[(name ++ \GrainAmp).asSymbol].split[i],
+					\channelOffset, i,
+					\trace, trace
+				)
+			} ! numBuffers;
+		} {
+			pbinds = { |i|
 				Pbind(
 					\instrument, \grain,
 					// buffers in the buffers array may start with a bufnum higher than 0
@@ -247,14 +289,17 @@ SNLooper : AbstractSNSampler {
 					\atk, CVCenter.cvWidgets[(name ++ "Atk").asSymbol].split[i],
 					\sust, CVCenter.cvWidgets[(name ++ "Sust").asSymbol].split[i],
 					\rel, CVCenter.cvWidgets[(name ++ "Rel").asSymbol].split[i],
-					\dec, CVCenter.cvWidgets[(name ++ "Dec").asSymbol].split[i],
 					\curve, CVCenter.cvWidgets[(name ++ "Curve").asSymbol].split[i],
 					\dur, CVCenter.cvWidgets[(name ++ "Dur").asSymbol].split[i]/*.trace(prefix: i.asString ++ ": ")*/,
-					\amp, CVCenter.cvWidgets[(name ++ "GrainAmp").asSymbol].split[i],
+					\grainAmp, CVCenter.cvWidgets[(name ++ "GrainAmp").asSymbol].split[i],
 					\channelOffset, i,
 					\trace, trace
 				)
-			} ! numBuffers)
+			} ! numBuffers
+		};
+
+		Pdef((name ++ "Loops").asSymbol,
+			Ppar(pbinds)
 		);
 
 		Ndef((name ++ "Loops").asSymbol).mold(numBuffers, \audio, \elastic);
@@ -263,10 +308,17 @@ SNLooper : AbstractSNSampler {
 
 	resetBuffers {
 		buffers.do(_.zero);
-		[\Start, \End, \Dur].do { |w|
-			CVCenter.at((name ++ w).asSymbol).spec.maxval_(bufLength);
-			usedBuffers = false ! numBuffers;
-		}
+		if (useFFT) {
+			fftBuffers.do(_.zero);
+			[\Cursor, \Dur].do { |w|
+				CVCenter.at((name ++ w).asSymbol).spec.maxval_(bufLength);
+			}
+		} {
+			[\Start, \End, \Dur].do { |w|
+				CVCenter.at((name ++ w).asSymbol).spec.maxval_(bufLength);
+			}
+		};
+		usedBuffers = false ! numBuffers;
 	}
 
 	clear { |fadeTime=0.2|
@@ -276,6 +328,7 @@ SNLooper : AbstractSNSampler {
 			Ndef((name ++ \Loops).asSymbol).clear;
 			Pdef((name ++ \Loops).asSymbol).clear;
 			buffers.do { |b| b.close; b.free };
+			if (useFFT) { fftBuffers.do { |fftb| fftb.close; fftb.free }};
 			recorder.clear;
 			recorder = nil;
 			all[name] = nil;
