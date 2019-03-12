@@ -175,15 +175,7 @@ SNRecorder {
 				this.recorderNChans_(n.value.asInteger);
 			})
 			;
-			/*bufSizeText = StaticText(window).string_("power of 2 buffer size:");
-			bufSize = NumberBox(window)
-			.value_(recorderBufSize ? 262144)
-			.clipLo_(512)
-			.step_(1)
-			.action_({ |n|
-				this.recorderBufSize_(n.value);
-			})
-			;*/
+
 			recordNameText = StaticText(window).string_("name:");
 			recordName = TextField(window)
 			.string_(this.defaultName)
@@ -227,7 +219,6 @@ SNRecorder {
 					VLayout(fileTypeText, fileType),
 					VLayout(chansOffsetText, chansOffset),
 					VLayout(nChansText, nChans),
-					/*bufSizeText, bufSize, */
 					VLayout(recordNameText, recordName)
 				),
 				HLayout(pathText, path, startStop)
