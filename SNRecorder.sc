@@ -1,5 +1,5 @@
 SNRecorder {
-	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "";
+	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "recording";
 	classvar <>fileType, <>headerFormat;
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
@@ -197,8 +197,8 @@ SNRecorder {
 			;
 			startStop = Button(window)
 			.states_([
-				["start", Color.black, Color.green],
-				["stop", Color.white, Color.red]
+				["START", Color.black, Color.green],
+				["STOP", Color.white, Color.red]
 			])
 			.action_({ |b|
 				switch (b.value,
@@ -237,7 +237,7 @@ SNRecorder {
 		};
 	}
 
-	*record { |server, name="recording", channelOffset=0, numChannels=2, recordingPath|
+	*record { |server, name, channelOffset=0, numChannels=2, recordingPath|
 		var date, timeString;
 
 		this.fileType ?? { this.fileType = "wav" };
@@ -256,8 +256,8 @@ SNRecorder {
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(
-					((recordingPath ? storageLoc) ++
-					(this.defaultName ? name) ++
+					((recordingPath ? this.storageLoc) ++
+					(name ? this.defaultName) ++
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath,
 					this.fileType, this.headerFormat, leaveOpen: true
 				);
@@ -281,8 +281,8 @@ SNRecorder {
 		timeRecRoutine.reset.stop;
 		if (window.notNil and: { window.isClosed.not }) {
 			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
+			startStop.value_(recording.not.binaryValue);
 		};
-		startStop.value_(recording.binaryValue);
 		recBuffer.close({ |buf| buf.freeMsg });
 		recording = false;
 	}
