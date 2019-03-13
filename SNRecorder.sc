@@ -4,22 +4,27 @@ SNRecorder {
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
-	classvar stopWatch;
+	classvar stopWatch, startStop, recording=false;
 	classvar recSynth;
 
 	*initClass {
+		Class.initClassTree(SynthDef);
+		// "\n\n\ninitClass\n\n\n".postln;
 		this.recorderBufSize_(262144);
 		this.setSynthDef(Server.default);
 	}
 
 	*setSynthDef { |server|
+		this.recServer_(server);
 		SynthDescLib.all[\snSynthDefs] ?? {
 			// store the synth in a separate SynthDescLib in order to avoid name clashes
-			SynthDescLib(\snSynthDefs, [server]);
+			SynthDescLib(\snSynthDefs, [this.recServer ? Server.default]);
 		};
+		// "\n\n\nSynthDescLib: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs]);
 		SynthDef(\snRecorder, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
 		}).add(\snSynthDefs);
+		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
 	}
 
 	*recorderNChans_ { |numChannels|
@@ -33,7 +38,6 @@ SNRecorder {
 		var bufSizeText, bufSize;
 		var recordNameText, recordName;
 		var pathText, path;
-		var startStop;
 		var myServers = Server.all.asArray;
 		var myServerNames = myServers.collect(_.name);
 		var fileTypes = [
@@ -210,6 +214,7 @@ SNRecorder {
 					0, { this.stop }
 				);
 			})
+			.value_(recording.binaryValue)
 			;
 
 			window.layout_(VLayout(
@@ -227,31 +232,46 @@ SNRecorder {
 			window.front;
 		};
 
-		SynthDescLib.global[\snRecorder] ?? {
+		SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
 			this.setSynthDef(myServers[myServer.value]);
 		};
 	}
 
-	*record { |server, name, channelOffset, numChannels, recordingPath|
-		var date;
+	*record { |server, name="recording", channelOffset=0, numChannels=2, recordingPath|
+		var date, timeString;
 
 		this.fileType ?? { this.fileType = "wav" };
 		this.headerFormat ?? { this.headerFormat = "float" };
 		numChannels !? { this.recorderNChans_(numChannels) };
+		server ?? { server = this.recServer ? Server.default };
 
 		server.waitForBoot {
 			server.bind {
+				// FIXME: why is the SnthDef not found when calling
+				// SNRecorder.record and server isn't booted yet?
+				/*SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
+					this.setSynthDef(server);
+				};*/
 				recBuffer = Buffer.alloc(server, this.recorderBufSize, this.recorderNChans);
 				server.sync;
 				date = Date.getDate;
-				recBuffer.write(((recordingPath ? storageLoc) ++ name ++ "_" ++ date.stamp ++ "." ++ this.fileType).standardizePath, this.fileType, this.headerFormat, leaveOpen: true);
+				recBuffer.write(
+					((recordingPath ? storageLoc) ++
+					(this.defaultName ? name) ++
+					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath,
+					this.fileType, this.headerFormat, leaveOpen: true
+				);
 				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
-						stopWatch.string_(i.asTimeString(1)[..7]).stringColor_(Color.red);
+						timeString = i.asTimeString(1)[..7];
+						if (window.notNil and:{ window.isClosed.not }) {
+							stopWatch.string_(timeString).stringColor_(Color.red);
+						};
 						1.wait;
 					}
 				}, AppClock);
+				recording = true;
 			}
 		}
 	}
@@ -259,8 +279,12 @@ SNRecorder {
 	*stop {
 		recSynth.free;
 		timeRecRoutine.reset.stop;
-		stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
+		if (window.notNil and: { window.isClosed.net }) {
+			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
+		};
+		startStop.value_(recording.binaryValue);
 		recBuffer.close({ |buf| buf.freeMsg });
+		recording = false;
 	}
 
 }
