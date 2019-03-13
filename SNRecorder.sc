@@ -279,7 +279,7 @@ SNRecorder {
 	*stop {
 		recSynth.free;
 		timeRecRoutine.reset.stop;
-		if (window.notNil and: { window.isClosed.net }) {
+		if (window.notNil and: { window.isClosed.not }) {
 			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
 		};
 		startStop.value_(recording.binaryValue);
