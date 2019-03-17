@@ -4,7 +4,7 @@ SNRecorder {
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
-	classvar stopWatch, startStop, recording=false;
+	classvar stopWatch, startStop, <isRecording=false;
 	classvar recSynth;
 
 	*initClass {
@@ -214,7 +214,7 @@ SNRecorder {
 					0, { this.stop }
 				);
 			})
-			.value_(recording.binaryValue)
+			.value_(isRecording.binaryValue)
 			;
 
 			window.layout_(VLayout(
@@ -256,7 +256,7 @@ SNRecorder {
 				server.sync;
 				date = Date.getDate;
 				recBuffer.write(
-					((recordingPath ? this.storageLoc) ++
+					((recordingPath ? this.storageLoc) +/+
 					(name ? this.defaultName) ++
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath,
 					this.fileType, this.headerFormat, leaveOpen: true
@@ -271,7 +271,7 @@ SNRecorder {
 						1.wait;
 					}
 				}, AppClock);
-				recording = true;
+				isRecording = true;
 			}
 		}
 	}
@@ -281,10 +281,10 @@ SNRecorder {
 		timeRecRoutine.reset.stop;
 		if (window.notNil and: { window.isClosed.not }) {
 			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
-			startStop.value_(recording.not.binaryValue);
+			startStop.value_(isRecording.not.binaryValue);
 		};
 		recBuffer.close({ |buf| buf.freeMsg });
-		recording = false;
+		isRecording = false;
 	}
 
 }
