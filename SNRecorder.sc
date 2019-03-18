@@ -4,7 +4,7 @@ SNRecorder {
 	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
-	classvar stopWatch, startStop, <isRecording=false;
+	classvar stopWatch, startStop, <isRecording=false, <currentRecordingPath;
 	classvar recSynth;
 
 	*initClass {
@@ -255,12 +255,10 @@ SNRecorder {
 				recBuffer = Buffer.alloc(server, this.recorderBufSize, this.recorderNChans);
 				server.sync;
 				date = Date.getDate;
-				recBuffer.write(
-					((recordingPath ? this.storageLoc) +/+
+				currentRecordingPath = ((recordingPath ? this.storageLoc) +/+
 					(name ? this.defaultName) ++
-					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath,
-					this.fileType, this.headerFormat, leaveOpen: true
-				);
+					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath;
+				recBuffer.write(currentRecordingPath, this.fileType, this.headerFormat, leaveOpen: true);
 				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
@@ -278,12 +276,16 @@ SNRecorder {
 
 	*stop {
 		recSynth.free;
+		currentRecordingPath = nil;
 		timeRecRoutine.reset.stop;
 		if (window.notNil and: { window.isClosed.not }) {
 			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
 			startStop.value_(isRecording.not.binaryValue);
 		};
-		recBuffer.close({ |buf| buf.freeMsg });
+		recBuffer !? {
+			recBuffer.close({ |buf| buf.freeMsg });
+		};
+		recBuffer = nil;
 		isRecording = false;
 	}
 
