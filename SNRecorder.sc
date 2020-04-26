@@ -1,17 +1,22 @@
 SNRecorder {
-	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>defaultName = "recording";
+	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>recordingName = "recording";
 	classvar <>fileType, <>headerFormat;
-	classvar <>storageLoc = "~/Music/SuperCollider_recordings/";
+	classvar <>recordLocation;
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine;
 	classvar stopWatch, startStop, <isRecording=false, <currentRecordingPath;
 	classvar recSynth;
 
 	*initClass {
-		Class.initClassTree(SynthDef);
-		// "\n\n\ninitClass\n\n\n".postln;
-		this.recorderBufSize_(262144);
-		this.setSynthDef(Server.default);
+		StartUp.defer {
+			Class.initClassTree(SynthDef);
+			// "\n\n\ninitClass\n\n\n".postln;
+			this.recordLocation ?? {
+				this.recordLocation = thisProcess.platform.recordingsDir;
+			};
+			this.recorderBufSize_(262144);
+			this.setSynthDef(Server.default);
+		}
 	}
 
 	*setSynthDef { |server|
@@ -79,8 +84,7 @@ SNRecorder {
 			.stringColor_(Color.green)
 			.string_("WAITING")
 			.align_(\center)
-			.font_(Font("Andale Mono", 100))
-			;
+			.font_(Font("Andale Mono", 100));
 
 			myServerText = StaticText(window).string_("Server");
 			myServer = PopUpMenu(window)
@@ -90,13 +94,11 @@ SNRecorder {
 			})
 			.action_({ |p|
 				this.recServer_(p.item);
-			})
-			;
+			});
 
 			fileTypeText = StaticText(window).string_("file type");
 			fileType = PopUpMenu(window)
-			.items_(fileTypes)
-			;
+			.items_(fileTypes);
 
 			if (this.fileType.isNil) { fileType.value_(3) };
 			if (this.fileType.notNil) {
@@ -167,34 +169,31 @@ SNRecorder {
 			.step_(1)
 			.action_({ |ch|
 				this.channelOffset_(ch.value.asInteger);
-			})
-			;
+			});
 
-			nChansText = StaticText(window).string_("n-ch:");
+			nChansText = StaticText(window).string_("numchans.");
 			nChans = NumberBox(window)
 			.value_(this.recorderNChans)
 			.clipLo_(1)
 			.step_(1)
 			.action_({ |n|
 				this.recorderNChans_(n.value.asInteger);
-			})
-			;
+			});
 
-			recordNameText = StaticText(window).string_("name:");
+			recordNameText = StaticText(window).string_("name");
 			recordName = TextField(window)
-			.string_(this.defaultName)
+			.string_(this.recordingName)
 			.action_({ |t|
-				this.defaultName_(t.string);
-			})
-			;
+				this.recordingName_(t.string);
+			});
 
-			pathText = StaticText(window).string_("store file in:");
+			pathText = StaticText(window).string_("store file in");
 			path = TextField(window)
-			.string_(this.storageLoc)
+			.string_(this.recordLocation)
 			.action_({ |t|
-				this.storageLoc_(t.string);
-			})
-			;
+				this.recordLocation_(t.string);
+			});
+
 			startStop = Button(window)
 			.states_([
 				["START", Color.black, Color.green],
@@ -208,14 +207,13 @@ SNRecorder {
 							recordName.string,
 							channelOffset.value.asInteger,
 							nChans.value.asInteger,
-							path.string ? storageLoc
+							path.string ? recordLocation
 						)
 					},
 					0, { this.stop }
 				);
 			})
-			.value_(isRecording.binaryValue)
-			;
+			.value_(isRecording.binaryValue);
 
 			window.layout_(VLayout(
 				HLayout(stopWatch),
@@ -255,8 +253,8 @@ SNRecorder {
 				recBuffer = Buffer.alloc(server, this.recorderBufSize, this.recorderNChans);
 				server.sync;
 				date = Date.getDate;
-				currentRecordingPath = ((recordingPath ? this.storageLoc) +/+
-					(name ? this.defaultName) ++
+				currentRecordingPath = ((recordingPath ? this.recordLocation) +/+
+					(name ? this.recordingName) ++
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath;
 				recBuffer.write(currentRecordingPath, this.fileType, this.headerFormat, leaveOpen: true);
 				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
