@@ -245,7 +245,7 @@ SNRecorder {
 
 		server.waitForBoot {
 			server.bind {
-				// FIXME: why is the SnthDef not found when calling
+				// FIXME: why is the SynthDef not found when calling
 				// SNRecorder.record and server isn't booted yet?
 				/*SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
 					this.setSynthDef(server);
