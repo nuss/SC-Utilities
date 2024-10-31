@@ -1,5 +1,6 @@
 SNRecorder {
 	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>recordingName = "recording";
+	classvar <>speechSupport = false;
 	classvar <>fileType, <>headerFormat;
 	classvar <>recordLocation;
 	classvar <>recServer, <recBuffer;
@@ -33,7 +34,18 @@ SNRecorder {
 	}
 
 	*recorderNChans_ { |numChannels|
+		var sentence;
 		recorderNChans = numChannels.asInteger;
+		if (speechSupport) {
+			Platform.case(
+				\osx, {},
+				\linux, {
+					sentence = "recording to % channels".format(recorderNChans);
+					"espeak '%'".format(sentence).unixCmd;
+				},
+				\windows, {}
+			)
+		};
 		this.setSynthDef;
 	}
 
@@ -84,7 +96,19 @@ SNRecorder {
 			.stringColor_(Color.green)
 			.string_("WAITING")
 			.align_(\center)
-			.font_(Font("Andale Mono", 100));
+			.font_(Font("Andale Mono", 100))
+			.mouseEnterAction_({ |tf|
+				if (speechSupport) {
+					var sentence = "stopwatch. current state: %".format(tf.string);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			});
 
 			myServerText = StaticText(window).string_("Server");
 			myServer = PopUpMenu(window)
@@ -92,13 +116,47 @@ SNRecorder {
 			.value_(myServers.indexOf(this.recServer) ?? {
 				myServers.indexOf(Server.default)
 			})
+			.mouseEnterAction_({ |m|
+				if (speechSupport) {
+					var sentence = "list of servers: %. available servers: %".format(m.item, m.items);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			})
 			.action_({ |p|
 				this.recServer_(p.item);
+				if (speechSupport) {
+					var sentence = "server % seleted".format(p.item);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
 			});
 
 			fileTypeText = StaticText(window).string_("file type");
 			fileType = PopUpMenu(window)
-			.items_(fileTypes);
+			.items_(fileTypes)
+			.mouseEnterAction_({ |m|
+				if (speechSupport) {
+					var sentence = "file format: %".format(m.item);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			});
 
 			if (this.fileType.isNil) { fileType.value_(3) };
 			if (this.fileType.notNil) {
@@ -158,7 +216,17 @@ SNRecorder {
 					15, { this.fileType_("w64"); this.headerFormat_("float") },
 					16, { this.fileType_("flac"); this.headerFormat_("int16") },
 					17, { this.fileType_("flac"); this.headerFormat_("int24") }
-				)
+				);
+				if (speechSupport) {
+					var sentence = "selected file format: %".format(p.items[p.value]);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
 			});
 
 
@@ -167,8 +235,31 @@ SNRecorder {
 			.value_(this.channelOffset)
 			.clipLo_(0)
 			.step_(1)
+			.mouseEnterAction_({ |ch|
+				this.channelOffset_(ch.value.asInteger);
+				if (speechSupport) {
+					var sentence = "channel offset: %".format(ch.value.asInteger);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			})
 			.action_({ |ch|
 				this.channelOffset_(ch.value.asInteger);
+				if (speechSupport) {
+					var sentence = "channel offset set to: %".format(ch.value.asInteger);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
 			});
 
 			nChansText = StaticText(window).string_("numchans.");
@@ -176,6 +267,19 @@ SNRecorder {
 			.value_(this.recorderNChans)
 			.clipLo_(1)
 			.step_(1)
+			.mouseEnterAction_({ |n|
+				this.channelOffset_(n.value.asInteger);
+				if (speechSupport) {
+					var sentence = "recording to % channels".format(n.value.asInteger);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			})
 			.action_({ |n|
 				this.recorderNChans_(n.value.asInteger);
 			});
@@ -183,15 +287,59 @@ SNRecorder {
 			recordNameText = StaticText(window).string_("name");
 			recordName = TextField(window)
 			.string_(this.recordingName)
+			.mouseEnterAction_({ |t|
+				if (speechSupport) {
+					var sentence = "current recording name %".format(this.recordingName ++ "_" ++ Date.getDate.stamp ++ "." ++ this.fileType);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			})
 			.action_({ |t|
 				this.recordingName_(t.string);
+				if (speechSupport) {
+					var sentence = "recording name set to %".format(this.recordingName ++ "_" ++ Date.getDate.stamp ++ "." ++ this.fileType);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
 			});
 
 			pathText = StaticText(window).string_("store file in");
 			path = TextField(window)
 			.string_(this.recordLocation)
+			.mouseEnterAction_({ |t|
+				if (speechSupport) {
+					var sentence = "recording will be written to %".format(this.recordLocation);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
+			})
 			.action_({ |t|
 				this.recordLocation_(t.string);
+				if (speechSupport) {
+					var sentence = "recording will be written to %".format(this.recordLocation);
+					Platform.case(
+						\osx, {},
+						\linux, {
+							"espeak '%'".format(sentence).unixCmd;
+						},
+						\windows, {}
+					)
+				}
 			});
 
 			startStop = Button(window)
@@ -245,7 +393,7 @@ SNRecorder {
 
 		server.waitForBoot {
 			server.bind {
-				// FIXME: why is the SnthDef not found when calling
+				// FIXME: why is the SynthDef not found when calling
 				// SNRecorder.record and server isn't booted yet?
 				/*SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
 					this.setSynthDef(server);
