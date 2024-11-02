@@ -30,21 +30,15 @@ SNRecorder {
 		SynthDef(\snRecorder, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
 		}).add(\snSynthDefs);
-		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
+		"\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
 	}
 
 	*recorderNChans_ { |numChannels|
 		var sentence;
 		recorderNChans = numChannels.asInteger;
-		if (speechSupport) {
-			Platform.case(
-				\osx, {},
-				\linux, {
-					sentence = "recording to % channels".format(recorderNChans);
-					"espeak '%'".format(sentence).unixCmd;
-				},
-				\windows, {}
-			)
+		if (this.speechSupport) {
+			sentence = "recording to % channels".format(recorderNChans);
+			this.prSpeak(sentence)
 		};
 		this.setSynthDef;
 	}
@@ -89,74 +83,56 @@ SNRecorder {
 		if (window.isNil or: {
 			window.isClosed
 		}) {
-			window = Window("recorder", Rect(0, 0, 600, 200), false).front;
+			window = Window("recorder", Rect(0, 0, 600, 250), false).front;
 
 			stopWatch = StaticText(window)
+			.canFocus_(true)
+			.focus(false)
 			.background_(Color(0.1, 0.1, 0.1))
 			.stringColor_(Color.green)
 			.string_("WAITING")
 			.align_(\center)
-			.font_(Font("Andale Mono", 100))
-			.mouseEnterAction_({ |tf|
-				if (speechSupport) {
-					var sentence = "stopwatch. current state: %".format(tf.string);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			});
+			.font_(Font("Andale Mono", 100));
+
+			if (this.speechSupport) {
+				stopWatch.focusGainedAction_({ |w|
+					var sentence = "current recording status: %".format(w.string);
+					this.prSpeak(sentence);
+				})
+			};
 
 			myServerText = StaticText(window).string_("Server");
+
 			myServer = PopUpMenu(window)
 			.items_(myServerNames)
 			.value_(myServers.indexOf(this.recServer) ?? {
 				myServers.indexOf(Server.default)
 			})
-			.mouseEnterAction_({ |m|
-				if (speechSupport) {
-					var sentence = "list of servers: %. available servers: %".format(m.item, m.items);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			})
 			.action_({ |p|
 				this.recServer_(p.item);
-				if (speechSupport) {
-					var sentence = "server % seleted".format(p.item);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
+				if (this.speechSupport) {
+					var sentence = "server % selected".format(p.item);
+					this.prSpeak(sentence);
 				}
 			});
 
+			if (this.speechSupport) {
+				myServer.focusGainedAction_({ |m|
+					var sentence = "currently selected server: %".format(m.item);
+					this.prSpeak(sentence);
+				})
+			};
+
 			fileTypeText = StaticText(window).string_("file type");
 			fileType = PopUpMenu(window)
-			.items_(fileTypes)
-			.mouseEnterAction_({ |m|
-				if (speechSupport) {
+			.items_(fileTypes);
+
+			if (this.speechSupport) {
+				fileType.focusGainedAction_({ |m|
 					var sentence = "file format: %".format(m.item);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			});
+					this.prSpeak(sentence);
+				})
+			};
 
 			if (this.fileType.isNil) { fileType.value_(3) };
 			if (this.fileType.notNil) {
@@ -217,15 +193,9 @@ SNRecorder {
 					16, { this.fileType_("flac"); this.headerFormat_("int16") },
 					17, { this.fileType_("flac"); this.headerFormat_("int24") }
 				);
-				if (speechSupport) {
+				if (this.speechSupport) {
 					var sentence = "selected file format: %".format(p.items[p.value]);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
+					this.prSpeak(sentence);
 				}
 			});
 
@@ -235,112 +205,73 @@ SNRecorder {
 			.value_(this.channelOffset)
 			.clipLo_(0)
 			.step_(1)
-			.mouseEnterAction_({ |ch|
-				this.channelOffset_(ch.value.asInteger);
-				if (speechSupport) {
-					var sentence = "channel offset: %".format(ch.value.asInteger);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			})
 			.action_({ |ch|
 				this.channelOffset_(ch.value.asInteger);
-				if (speechSupport) {
+				if (this.speechSupport) {
 					var sentence = "channel offset set to: %".format(ch.value.asInteger);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
+					this.prSpeak(sentence);
 				}
 			});
+
+			if (this.speechSupport) {
+				chansOffset.focusGainedAction_({ |ch|
+					var sentence = "channel offset: %".format(ch.value.asInteger);
+					this.prSpeak(sentence);
+				})
+			};
 
 			nChansText = StaticText(window).string_("numchans.");
 			nChans = NumberBox(window)
 			.value_(this.recorderNChans)
 			.clipLo_(1)
 			.step_(1)
-			.mouseEnterAction_({ |n|
-				this.channelOffset_(n.value.asInteger);
-				if (speechSupport) {
-					var sentence = "recording to % channels".format(n.value.asInteger);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			})
 			.action_({ |n|
 				this.recorderNChans_(n.value.asInteger);
 			});
 
+			if (this.speechSupport) {
+				nChans.focusGainedAction_({ |n|
+					var sentence = "recording to % channels".format(n.value.asInteger);
+					this.prSpeak(sentence);
+				})
+			};
+
 			recordNameText = StaticText(window).string_("name");
 			recordName = TextField(window)
 			.string_(this.recordingName)
-			.mouseEnterAction_({ |t|
-				if (speechSupport) {
-					var sentence = "current recording name %".format(this.recordingName ++ "_" ++ Date.getDate.stamp ++ "." ++ this.fileType);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			})
 			.action_({ |t|
 				this.recordingName_(t.string);
-				if (speechSupport) {
-					var sentence = "recording name set to %".format(this.recordingName ++ "_" ++ Date.getDate.stamp ++ "." ++ this.fileType);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
+				if (this.speechSupport) {
+					var sentence = "recording name set to %".format(this.recordingName);
+					this.prSpeak(sentence);
 				}
 			});
+
+			if (this.speechSupport) {
+				recordName.focusGainedAction_({ |t|
+					var sentence = "current recording name %".format(this.recordingName);
+					this.prSpeak(sentence);
+				})
+			};
+
 
 			pathText = StaticText(window).string_("store file in");
 			path = TextField(window)
 			.string_(this.recordLocation)
-			.mouseEnterAction_({ |t|
-				if (speechSupport) {
-					var sentence = "recording will be written to %".format(this.recordLocation);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
-				}
-			})
 			.action_({ |t|
 				this.recordLocation_(t.string);
-				if (speechSupport) {
+				if (this.speechSupport) {
 					var sentence = "recording will be written to %".format(this.recordLocation);
-					Platform.case(
-						\osx, {},
-						\linux, {
-							"espeak '%'".format(sentence).unixCmd;
-						},
-						\windows, {}
-					)
+					this.prSpeak(sentence);
 				}
 			});
+
+			if (this.speechSupport) {
+				path.focusGainedAction_({ |t|
+					var sentence = "recording will be written to %".format(this.recordLocation);
+					this.prSpeak(sentence);
+				})
+			};
 
 			startStop = Button(window)
 			.states_([
@@ -356,12 +287,36 @@ SNRecorder {
 							channelOffset.value.asInteger,
 							nChans.value.asInteger,
 							path.string ? recordLocation
-						)
+						);
+						// if (this.speechSupport) {
+						// 	b.keyDownAction_({ |v, ch, m, u, kc, k|
+						// 		if (ch === $\r) {
+						// 			var sentence = "recording started";
+						// 			this.doAction;
+						// 			this.prSpeak(sentence);
+						// 		}
+						// 	})
+						// }
 					},
 					0, { this.stop }
 				);
 			})
 			.value_(isRecording.binaryValue);
+
+			if (this.speechSupport) {
+				var sentence;
+				startStop.focusGainedAction_({ |b|
+					switch (b.value,
+						0, {
+							sentence = "start recording";
+						},
+						1, {
+							sentence = "stop recording";
+						}
+					);
+					this.prSpeak(sentence);
+				})
+			};
 
 			window.layout_(VLayout(
 				HLayout(stopWatch),
@@ -395,17 +350,16 @@ SNRecorder {
 			server.bind {
 				// FIXME: why is the SynthDef not found when calling
 				// SNRecorder.record and server isn't booted yet?
-				/*SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
-					this.setSynthDef(server);
-				};*/
 				recBuffer = Buffer.alloc(server, this.recorderBufSize, this.recorderNChans);
-				server.sync;
 				date = Date.getDate;
 				currentRecordingPath = ((recordingPath ? this.recordLocation) +/+
 					(name ? this.recordingName) ++
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath;
 				recBuffer.write(currentRecordingPath, this.fileType, this.headerFormat, leaveOpen: true);
-				recSynth = Synth.tail(nil, \snRecorder, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
+				// why do I have to recreate the SynthDef???
+				this.setSynthDef(server);
+				server.sync;
+				recSynth = Synth.tail(nil, SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
 					inf.do{ |i|
 						timeString = i.asTimeString(1)[..7];
@@ -433,6 +387,15 @@ SNRecorder {
 		};
 		recBuffer = nil;
 		isRecording = false;
+	}
+
+	// speech support
+	*prSpeak { |sentence|
+		Platform.case(
+			\osx, {},
+			\linux, { "espeak \"%\"".format(sentence).unixCmd },
+			\windows, { "espeak \"%\"".format(sentence).unixCmd }
+		)
 	}
 
 }
