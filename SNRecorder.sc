@@ -9,9 +9,13 @@ SNRecorder {
 	classvar recSynth;
 
 	*initClass {
-		StartUp.defer {
+		StartUp.add {
 			Class.initClassTree(SynthDef);
 			// "\n\n\ninitClass\n\n\n".postln;
+			SynthDescLib.all[\snSynthDefs] ?? {
+				// store the synth in a separate SynthDescLib in order to avoid name clashes
+				SynthDescLib(\snSynthDefs, [this.recServer ? Server.default]);
+			};
 			this.recordLocation ?? {
 				this.recordLocation = thisProcess.platform.recordingsDir;
 			};
@@ -21,16 +25,12 @@ SNRecorder {
 	}
 
 	*setSynthDef { |server|
-		this.recServer_(server);
-		SynthDescLib.all[\snSynthDefs] ?? {
-			// store the synth in a separate SynthDescLib in order to avoid name clashes
-			SynthDescLib(\snSynthDefs, [this.recServer ? Server.default]);
-		};
+		this.recServer_(server ? Server.default);
 		// "\n\n\nSynthDescLib: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs]);
 		SynthDef(\snRecorder, { |in, bufnum|
 			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
 		}).add(\snSynthDefs);
-		"\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
+		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
 	}
 
 	*recorderNChans_ { |numChannels|
@@ -288,20 +288,15 @@ SNRecorder {
 							nChans.value.asInteger,
 							path.string ? recordLocation
 						);
-						// if (this.speechSupport) {
-						// 	b.keyDownAction_({ |v, ch, m, u, kc, k|
-						// 		if (ch === $\r) {
-						// 			var sentence = "recording started";
-						// 			this.doAction;
-						// 			this.prSpeak(sentence);
-						// 		}
-						// 	})
-						// }
 					},
 					0, { this.stop }
 				);
 			})
+			.keyDownAction_({ |v, ch, m, u, kc, k|
+				"view: %, char: %, mod: %, unicode: %, keycode: %, key: %".format(v, ch, m, u, kc, k).postcs;
+			})
 			.value_(isRecording.binaryValue);
+
 
 			if (this.speechSupport) {
 				var sentence;
@@ -357,7 +352,7 @@ SNRecorder {
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath;
 				recBuffer.write(currentRecordingPath, this.fileType, this.headerFormat, leaveOpen: true);
 				// why do I have to recreate the SynthDef???
-				this.setSynthDef(server);
+				// this.setSynthDef(server);
 				server.sync;
 				recSynth = Synth.tail(nil, SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
