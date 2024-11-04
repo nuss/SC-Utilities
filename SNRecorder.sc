@@ -21,6 +21,7 @@ SNRecorder {
 			};
 			this.recorderBufSize_(262144);
 			this.setSynthDef(Server.default);
+			this.speechSupport_(true).front;
 		}
 	}
 
@@ -33,10 +34,10 @@ SNRecorder {
 		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
 	}
 
-	*recorderNChans_ { |numChannels|
+	*recorderNChans_ { |numChannels, speechSuppressed = false|
 		var sentence;
 		recorderNChans = numChannels.asInteger;
-		if (this.speechSupport) {
+		if (this.speechSupport and: { speechSuppressed.not }) {
 			sentence = "recording to % channels".format(recorderNChans);
 			this.prSpeak(sentence)
 		};
@@ -279,21 +280,20 @@ SNRecorder {
 				["STOP", Color.white, Color.red]
 			])
 			.action_({ |b|
-				switch (b.value,
-					1, {
-						this.record(
-							myServers[myServer.value],
-							recordName.string,
-							channelOffset.value.asInteger,
-							nChans.value.asInteger,
-							path.string ? recordLocation
-						);
-					},
-					0, { this.stop }
-				);
+				this.prStartStopRecording(b.value, recordName, nChans, path, myServers, myServer);
 			})
-			.keyDownAction_({ |v, ch, m, u, kc, k|
-				"view: %, char: %, mod: %, unicode: %, keycode: %, key: %".format(v, ch, m, u, kc, k).postcs;
+			.keyDownAction_({ |...args|
+				[args[0], args.last].postln;
+				if (args.last == 16777220) {
+					"isRecording: %".format(isRecording).postln;
+					if (isRecording) {
+						this.prStartStopRecording(0, recordName, nChans, path, myServers, myServer);
+						args[0].value_(0);
+					} {
+						this.prStartStopRecording(1, recordName, nChans, path, myServers, myServer);
+						args[0].value_(1);
+					}
+				}
 			})
 			.value_(isRecording.binaryValue);
 
@@ -303,10 +303,10 @@ SNRecorder {
 				startStop.focusGainedAction_({ |b|
 					switch (b.value,
 						0, {
-							sentence = "start recording";
+							sentence = "start recording button";
 						},
 						1, {
-							sentence = "stop recording";
+							sentence = "stop recording button";
 						}
 					);
 					this.prSpeak(sentence);
@@ -338,7 +338,7 @@ SNRecorder {
 
 		this.fileType ?? { this.fileType = "wav" };
 		this.headerFormat ?? { this.headerFormat = "float" };
-		numChannels !? { this.recorderNChans_(numChannels) };
+		numChannels !? { this.recorderNChans_(numChannels, true) };
 		server ?? { server = this.recServer ? Server.default };
 
 		server.waitForBoot {
@@ -391,6 +391,28 @@ SNRecorder {
 			\linux, { "espeak \"%\"".format(sentence).unixCmd },
 			\windows, { "espeak \"%\"".format(sentence).unixCmd }
 		)
+	}
+
+	*prStartStopRecording { |state, recordName, nChans, path, servers, server|
+		var actions = [
+			{
+				this.stop;
+				this.prSpeak("recording stopped");
+			},
+			{
+				this.record(
+					servers[server.value],
+					recordName.string,
+					channelOffset.value.asInteger,
+					nChans.value.asInteger,
+					path.string ? recordLocation
+				);
+				if (this.speechSupport) {
+					this.prSpeak("recording started");
+				}
+			}
+		];
+		actions[state].value;
 	}
 
 }
