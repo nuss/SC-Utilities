@@ -391,7 +391,10 @@ SNRecorder {
 	*prSpeak { |sentence|
 		Platform.case(
 			\osx, {},
-			\linux, { "espeak \"%\"".format(sentence).unixCmd },
+			\linux, {
+				"killall espeak".unixCmd;
+				"espeak \"%\"".format(sentence).unixCmd;
+			},
 			\windows, { "espeak \"%\"".format(sentence).unixCmd }
 		)
 	}
