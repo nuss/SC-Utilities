@@ -20,7 +20,7 @@ SNRecorder {
 				this.recordLocation = thisProcess.platform.recordingsDir;
 			};
 			this.recorderBufSize_(262144);
-			this.setSynthDef(Server.default);
+			// this.setSynthDef(Server.default);
 			this.speechSupport_(true).front;
 		}
 	}
@@ -29,9 +29,9 @@ SNRecorder {
 		this.recServer_(server ? Server.default);
 		// "\n\n\nSynthDescLib: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs]);
 		SynthDef(\snRecorder, { |in, bufnum|
-			var clip, gen, sig = In.ar(in, this.recorderNChans);
+			var clip, gen, sig = LeakDC.ar(In.ar(in, this.recorderNChans));
 			// clip = Resonz.ar((Peak.ar(sig, Impulse.ar(60)) > 1.0), 4000, mul: 0.5);
-			gen = EnvGen.ar(Env.perc, Peak.ar(sig, Impulse.ar(60)) > 1.0);
+			gen = EnvGen.ar(Env.sine(0.1), Peak.ar(sig, Impulse.ar(60)) > 1.0);
 			clip = SinOsc.ar(gen * 2000) * gen * 0.5;
 			Out.ar(0, clip ! 2);
 			DiskOut.ar(bufnum, sig);
