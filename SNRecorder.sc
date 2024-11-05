@@ -29,7 +29,12 @@ SNRecorder {
 		this.recServer_(server ? Server.default);
 		// "\n\n\nSynthDescLib: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs]);
 		SynthDef(\snRecorder, { |in, bufnum|
-			DiskOut.ar(bufnum, In.ar(in, this.recorderNChans));
+			var clip, gen, sig = In.ar(in, this.recorderNChans);
+			// clip = Resonz.ar((Peak.ar(sig, Impulse.ar(60)) > 1.0), 4000, mul: 0.5);
+			gen = EnvGen.ar(Env.perc, Peak.ar(sig, Impulse.ar(60)) > 1.0);
+			clip = SinOsc.ar(gen * 2000) * gen * 0.5;
+			Out.ar(0, clip ! 2);
+			DiskOut.ar(bufnum, sig);
 		}).add(\snSynthDefs);
 		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
 	}
@@ -283,9 +288,7 @@ SNRecorder {
 				this.prStartStopRecording(b.value, recordName, nChans, path, myServers, myServer);
 			})
 			.keyDownAction_({ |...args|
-				[args[0], args.last].postln;
 				if (args.last == 16777220) {
-					"isRecording: %".format(isRecording).postln;
 					if (isRecording) {
 						this.prStartStopRecording(0, recordName, nChans, path, myServers, myServer);
 						args[0].value_(0);
@@ -352,7 +355,7 @@ SNRecorder {
 					"_" ++ date.stamp ++ "." ++ this.fileType).standardizePath;
 				recBuffer.write(currentRecordingPath, this.fileType, this.headerFormat, leaveOpen: true);
 				// why do I have to recreate the SynthDef???
-				// this.setSynthDef(server);
+				this.setSynthDef(server);
 				server.sync;
 				recSynth = Synth.tail(nil, SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
 				timeRecRoutine = fork ({
