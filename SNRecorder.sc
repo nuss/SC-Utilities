@@ -4,7 +4,7 @@ SNRecorder {
 	classvar <>fileType, <>headerFormat;
 	classvar <>recordLocation;
 	classvar <>recServer, <recBuffer;
-	classvar timeRecRoutine;
+	classvar timeRecRoutine, speakPid;
 	classvar stopWatch, startStop, <isRecording=false, <currentRecordingPath;
 	classvar recSynth;
 
@@ -395,7 +395,11 @@ SNRecorder {
 				"killall espeak".unixCmd;
 				"espeak \"%\"".format(sentence).unixCmd;
 			},
-			\windows, { "espeak \"%\"".format(sentence).unixCmd }
+			\windows, {
+				// speakPid !? { speakPid.postln; "Stop-Process -Force -Id %".format(speakPid).unixCmd };
+				speakPid !? { speakPid.postln; "taskkill /F /PID %".format(speakPid).unixCmd };
+				speakPid = "espeak \"%\"".format(sentence).unixCmd;
+			}
 		)
 	}
 
