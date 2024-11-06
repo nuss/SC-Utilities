@@ -5,16 +5,17 @@ SNRecorder {
 	classvar <>recordLocation;
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine, speakPid;
-	classvar stopWatch, startStop, <isRecording=false, <currentRecordingPath;
-	classvar recSynth;
+	classvar stopWatch, preListenButton, startStop, <isRecording=false, <currentRecordingPath;
+	classvar recSynth, preListener;
 
 	*initClass {
 		StartUp.add {
 			Class.initClassTree(SynthDef);
 			// "\n\n\ninitClass\n\n\n".postln;
+			this.recServer ?? { this.recServer = Server.default };
 			SynthDescLib.all[\snSynthDefs] ?? {
 				// store the synth in a separate SynthDescLib in order to avoid name clashes
-				SynthDescLib(\snSynthDefs, [this.recServer ? Server.default]);
+				SynthDescLib(\snSynthDefs, [this.recServer]);
 			};
 			this.recordLocation ?? {
 				this.recordLocation = thisProcess.platform.recordingsDir;
@@ -25,15 +26,28 @@ SNRecorder {
 		}
 	}
 
+	*preListen { |server, in=0, numChannels=2, out=0, on=true|
+		if (on) {
+			server.waitForBoot {
+				SynthDef(\preListener, {
+					var clip, gen, sig = LeakDC.ar(In.ar(in, numChannels));
+					gen = EnvGen.ar(Env.sine(0.1), Peak.ar(sig.abs, Impulse.ar(60)) > 1.0);
+					clip = SinOsc.ar(gen * 2000) * gen * 0.5;
+					Out.ar(out, clip ! 2);
+				}).add(\snSynthDefs);
+				server.sync;
+				preListener = Synth(\preListener)
+			}
+		} {
+			preListener.free;
+		}
+	}
+
 	*setSynthDef { |server|
 		this.recServer_(server ? Server.default);
 		// "\n\n\nSynthDescLib: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs]);
 		SynthDef(\snRecorder, { |in, bufnum|
-			var clip, gen, sig = LeakDC.ar(In.ar(in, this.recorderNChans));
-			// clip = Resonz.ar((Peak.ar(sig, Impulse.ar(60)) > 1.0), 4000, mul: 0.5);
-			gen = EnvGen.ar(Env.sine(0.1), Peak.ar(sig, Impulse.ar(60)) > 1.0);
-			clip = SinOsc.ar(gen * 2000) * gen * 0.5;
-			Out.ar(0, clip ! 2);
+			var sig = LeakDC.ar(In.ar(in, this.recorderNChans));
 			DiskOut.ar(bufnum, sig);
 		}).add(\snSynthDefs);
 		// "\n\n\nSynthDescLib.all[\snSynthDefs].synthDescs: %\n\n\n".postf(SynthDescLib.all[\snSynthDefs].synthDescs);
@@ -279,6 +293,19 @@ SNRecorder {
 				})
 			};
 
+			preListenButton = Button(window)
+			.states_([
+				["PRELISTEN", Color.white, Color.blue],
+				["PRELISTENING", Color.black, Color.yellow]
+			])
+			.action_({ |b|
+				switch(b.value)
+				{ 1 } {
+					SNRecorder.preListen(this.recServer, this.channelOffset, 2, 0, b.value.asBoolean)
+				}
+				{ 0 } { SNRecorder.preListen(on: b.value.asBoolean.postln) }
+			});
+
 			startStop = Button(window)
 			.states_([
 				["START", Color.black, Color.green],
@@ -325,7 +352,7 @@ SNRecorder {
 					VLayout(nChansText, nChans),
 					VLayout(recordNameText, recordName)
 				),
-				HLayout(pathText, path, startStop)
+				HLayout(pathText, path, preListenButton, startStop)
 			));
 		} {
 			window.front;
@@ -392,12 +419,13 @@ SNRecorder {
 		Platform.case(
 			\osx, {},
 			\linux, {
-				"killall espeak".unixCmd;
-				"espeak \"%\"".format(sentence).unixCmd;
+				// "killall espeak".unixCmd;
+				speakPid !? { "kill %".format(speakPid).unixCmd };
+				speakPid = "espeak \"%\"".format(sentence).unixCmd;
 			},
 			\windows, {
 				// speakPid !? { speakPid.postln; "Stop-Process -Force -Id %".format(speakPid).unixCmd };
-				speakPid !? { speakPid.postln; "taskkill /F /PID %".format(speakPid).unixCmd };
+				// speakPid !? { speakPid.postln; "taskkill /F /PID %".format(speakPid).unixCmd };
 				speakPid = "espeak \"%\"".format(sentence).unixCmd;
 			}
 		)
