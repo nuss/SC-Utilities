@@ -5,14 +5,14 @@ SNRecorder {
 	classvar <>recordLocation;
 	classvar <>recServer, <recBuffer;
 	classvar timeRecRoutine, speakPid;
-	classvar stopWatch, preListenButton, startStop, <isRecording=false, <currentRecordingPath;
-	classvar recSynth, preListener;
+	classvar stopWatch, preListenButton, startStop, <isRecording=false, <currentRecordingPath, <isPreListening=false;
+	classvar recSynth, recGroup, preListener, preListenerGroup;
 
 	*initClass {
 		StartUp.add {
 			Class.initClassTree(SynthDef);
 			// "\n\n\ninitClass\n\n\n".postln;
-			this.recServer ?? { this.recServer = Server.default };
+			this.recServer_(this.recServer ? Server.default);
 			SynthDescLib.all[\snSynthDefs] ?? {
 				// store the synth in a separate SynthDescLib in order to avoid name clashes
 				SynthDescLib(\snSynthDefs, [this.recServer]);
@@ -23,23 +23,6 @@ SNRecorder {
 			this.recorderBufSize_(262144);
 			// this.setSynthDef(Server.default);
 			this.speechSupport_(true).front;
-		}
-	}
-
-	*preListen { |server, in=0, numChannels=2, out=0, on=true|
-		if (on) {
-			server.waitForBoot {
-				SynthDef(\preListener, {
-					var clip, gen, sig = LeakDC.ar(In.ar(in, numChannels));
-					gen = EnvGen.ar(Env.sine(0.1), Peak.ar(sig.abs, Impulse.ar(60)) > 1.0);
-					clip = SinOsc.ar(gen * 2000) * gen * 0.5;
-					Out.ar(out, clip ! 2);
-				}).add(\snSynthDefs);
-				server.sync;
-				preListener = Synth(\preListener)
-			}
-		} {
-			preListener.free;
 		}
 	}
 
@@ -219,6 +202,13 @@ SNRecorder {
 				}
 			});
 
+			// if (this.speechSupport) {
+			// 	window.view.keyDownAction_({ |...args|
+			// 		if (args[2] == 524288 and: { args[1] === $f }) {
+			// 			fileType.focus
+			// 		}
+			// 	})
+			// };
 
 			chansOffsetText = StaticText(window).string_("ch. offset");
 			chansOffset = NumberBox(window)
@@ -237,7 +227,12 @@ SNRecorder {
 				chansOffset.focusGainedAction_({ |ch|
 					var sentence = "channel offset: %".format(ch.value.asInteger);
 					this.prSpeak(sentence);
-				})
+				});
+				// window.view.keyDownAction_({ |...args|
+				// 	if (args[2] == 524288 and: { args[1] === $i }) {
+				// 		chansOffset.focus
+				// 	}
+				// })
 			};
 
 			nChansText = StaticText(window).string_("numchans.");
@@ -253,7 +248,12 @@ SNRecorder {
 				nChans.focusGainedAction_({ |n|
 					var sentence = "recording to % channels".format(n.value.asInteger);
 					this.prSpeak(sentence);
-				})
+				});
+				// window.view.keyDownAction_({ |...args|
+				// 	if (args[2] == 524288 and: { args[1] === $c }) {
+				// 		nChans.focus
+				// 	}
+				// })
 			};
 
 			recordNameText = StaticText(window).string_("name");
@@ -299,12 +299,34 @@ SNRecorder {
 				["PRELISTENING", Color.black, Color.yellow]
 			])
 			.action_({ |b|
-				switch(b.value)
-				{ 1 } {
-					SNRecorder.preListen(this.recServer, this.channelOffset, 2, 0, b.value.asBoolean)
+				this.prStartStopClippingWarning(b.value, this.recServer, this.channelOffset, this.recorderNChans, 2)
+			})
+			.keyDownAction_({ |...args|
+				if (args.last == 16777220) {
+					if (isPreListening) {
+						this.prStartStopClippingWarning(0);
+						args[0].value_(0);
+					} {
+						this.prStartStopClippingWarning(1, this.recServer, this.channelOffset, this.recorderNChans, 2);
+						args[0].value_(1);
+					}
 				}
-				{ 0 } { SNRecorder.preListen(on: b.value.asBoolean.postln) }
 			});
+
+			if (this.speechSupport) {
+				var sentence;
+				preListenButton.focusGainedAction_({ |b|
+					switch (b.value,
+						0, {
+							sentence = "start clipping warning button";
+						},
+						1, {
+							sentence = "stop clipping warning buttton";
+						}
+					);
+					this.prSpeak(sentence);
+				})
+			};
 
 			startStop = Button(window)
 			.states_([
@@ -326,7 +348,6 @@ SNRecorder {
 				}
 			})
 			.value_(isRecording.binaryValue);
-
 
 			if (this.speechSupport) {
 				var sentence;
@@ -363,6 +384,32 @@ SNRecorder {
 		};
 	}
 
+
+	*preListen { |server, in=0, numChannels=2, out=2, on=true|
+		if (on) {
+			server.waitForBoot {
+				recGroup ?? {
+					recGroup = Group.new;
+				};
+				preListenerGroup ?? {
+					preListenerGroup = Group.after(recGroup);
+				};
+				SynthDef(\preListener, { |o|
+					var clip, gen, sig = LeakDC.ar(In.ar(in, numChannels));
+					gen = EnvGen.ar(Env.sine(0.1), Peak.ar(sig.abs, Impulse.ar(60)) > 1.0);
+					clip = SinOsc.ar(gen * 2000) * gen * 0.5;
+					Out.ar(o, clip ! 2);
+				}).add(\snSynthDefs);
+				server.sync;
+				preListener = Synth(SynthDescLib.all[\snSynthDefs][\preListener].name, [\o, out], preListenerGroup);
+				isPreListening = true;
+			}
+		} {
+			preListener.free;
+			isPreListening = false;
+		}
+	}
+
 	*record { |server, name, channelOffset=0, numChannels=2, recordingPath|
 		var date, timeString;
 
@@ -375,6 +422,9 @@ SNRecorder {
 			server.bind {
 				// FIXME: why is the SynthDef not found when calling
 				// SNRecorder.record and server isn't booted yet?
+				recGroup ?? { recGroup = Group.new };
+				preListenerGroup ?? { preListenerGroup = Group.after(recGroup) };
+
 				recBuffer = Buffer.alloc(server, this.recorderBufSize, this.recorderNChans);
 				date = Date.getDate;
 				currentRecordingPath = ((recordingPath ? this.recordLocation) +/+
@@ -384,7 +434,11 @@ SNRecorder {
 				// why do I have to recreate the SynthDef???
 				this.setSynthDef(server);
 				server.sync;
-				recSynth = Synth.tail(nil, SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
+				// recSynth = Synth.tail(nil, SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum]);
+				recSynth = Synth(SynthDescLib.all[\snSynthDefs][\snRecorder].name, [\in, channelOffset, \bufnum, recBuffer.bufnum], recGroup);
+				if (this.speechSupport) {
+					this.prSpeak("recording started");
+				};
 				timeRecRoutine = fork ({
 					inf.do{ |i|
 						timeString = i.asTimeString(1)[..7];
@@ -419,8 +473,8 @@ SNRecorder {
 		Platform.case(
 			\osx, {},
 			\linux, {
-				// "killall espeak".unixCmd;
-				speakPid !? { "kill %".format(speakPid).unixCmd };
+				"killall espeak".unixCmd;
+				// speakPid !? { "kill %".format(speakPid).unixCmd };
 				speakPid = "espeak \"%\"".format(sentence).unixCmd;
 			},
 			\windows, {
@@ -444,10 +498,21 @@ SNRecorder {
 					channelOffset.value.asInteger,
 					nChans.value.asInteger,
 					path.string ? recordLocation
-				);
-				if (this.speechSupport) {
-					this.prSpeak("recording started");
-				}
+				)
+			}
+		];
+		actions[state].value;
+	}
+
+	*prStartStopClippingWarning { |state, server, in, numChannels, out|
+		var actions = [
+			{
+				this.preListen(on: false);
+				this.prSpeak("clipping warning stopped");
+			},
+			{
+				this.preListen(server, in, numChannels, out, true);
+				this.prSpeak("clipping warning started");
 			}
 		];
 		actions[state].value;
