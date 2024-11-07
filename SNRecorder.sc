@@ -1,5 +1,5 @@
 SNRecorder {
-	classvar <window, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>recordingName = "recording";
+	classvar <window, gui, <recorderNChans=2, <>channelOffset=0, <>recorderBufSize, <>recordingName = "recording";
 	classvar <>speechSupport = false;
 	classvar <>fileType, <>headerFormat;
 	classvar <>recordLocation;
@@ -22,6 +22,8 @@ SNRecorder {
 			};
 			this.recorderBufSize_(262144);
 			// this.setSynthDef(Server.default);
+			gui = ();
+			"gui is: %".format(gui).postln;
 			this.speechSupport_(true).front;
 		}
 	}
@@ -47,11 +49,11 @@ SNRecorder {
 	}
 
 	*front {
-		var myServerText, myServer, nChansText, nChans, chansOffsetText, chansOffset;
-		var fileTypeText, fileType, headerFormatText, headerFormat;
+		var myServerText, nChansText, chansOffsetText;
+		var fileTypeText, headerFormatText, headerFormat;
 		var bufSizeText, bufSize;
-		var recordNameText, recordName;
-		var pathText, path;
+		var recordNameText;
+		var pathText;
 		var myServers = Server.all.asArray;
 		var myServerNames = myServers.collect(_.name);
 		var fileTypes = [
@@ -87,8 +89,9 @@ SNRecorder {
 			window.isClosed
 		}) {
 			window = Window("recorder", Rect(0, 0, 600, 250), false).front;
+			gui.window = window.view;
 
-			stopWatch = StaticText(window)
+			gui.stopWatch = StaticText(window)
 			.canFocus_(true)
 			.focus(false)
 			.background_(Color(0.1, 0.1, 0.1))
@@ -98,7 +101,7 @@ SNRecorder {
 			.font_(Font("Andale Mono", 100));
 
 			if (this.speechSupport) {
-				stopWatch.focusGainedAction_({ |w|
+				gui.stopWatch.focusGainedAction_({ |w|
 					var sentence = "current recording status: %".format(w.string);
 					this.prSpeak(sentence);
 				})
@@ -106,7 +109,7 @@ SNRecorder {
 
 			myServerText = StaticText(window).string_("Server");
 
-			myServer = PopUpMenu(window)
+			gui.myServer = PopUpMenu(window)
 			.items_(myServerNames)
 			.value_(myServers.indexOf(this.recServer) ?? {
 				myServers.indexOf(Server.default)
@@ -120,62 +123,62 @@ SNRecorder {
 			});
 
 			if (this.speechSupport) {
-				myServer.focusGainedAction_({ |m|
+				gui.myServer.focusGainedAction_({ |m|
 					var sentence = "currently selected server: %".format(m.item);
 					this.prSpeak(sentence);
 				})
 			};
 
 			fileTypeText = StaticText(window).string_("file type");
-			fileType = PopUpMenu(window)
+			gui.fileType = PopUpMenu(window)
 			.items_(fileTypes);
 
 			if (this.speechSupport) {
-				fileType.focusGainedAction_({ |m|
+				gui.fileType.focusGainedAction_({ |m|
 					var sentence = "file format: %".format(m.item);
 					this.prSpeak(sentence);
 				})
 			};
 
-			if (this.fileType.isNil) { fileType.value_(3) };
+			if (this.fileType.isNil) { gui.fileType.value_(3) };
 			if (this.fileType.notNil) {
 				if (this.headerFormat.isNil) {
 					switch (this.fileType.asString.toLower,
-						"wav", { fileType.value_(3) },
-						"aiff", { fileType.value_(7) },
-						"caf", { fileType.value_(11) },
-						"w64", { fileType.value_(15) },
-						"flac", { fileType.value_(17) },
-						{ fileType.value_(3) }
+						"wav", { gui.fileType.value_(3) },
+						"aiff", { gui.fileType.value_(7) },
+						"caf", { gui.fileType.value_(11) },
+						"w64", { gui.fileType.value_(15) },
+						"flac", { gui.fileType.value_(17) },
+						{ gui.fileType.value_(3) }
 					)
 				} {
 					switch (this.fileType.asString.toLower,
 						"wav", {
 							index = validHeaders.wav.indexOf(this.headerFormat);
-							if (index.notNil) { fileType.value_(index) } { fileType.value_(3) };
+							if (index.notNil) { gui.fileType.value_(index) } { gui.fileType.value_(3) };
 						},
 						"aiff", {
 							index = validHeaders.aiff.indexOf(this.headerFormat);
-							if (index.notNil) { fileType.value_(index + 4) } { fileType.value_(7) };
+							if (index.notNil) { gui.fileType.value_(index + 4) } { gui.fileType.value_(7) };
 						},
 						"caf", {
 							index = validHeaders.caf.indexOf(this.headerFormat);
-							if (index.notNil) { fileType.value_(index + 8) } { fileType.value_(11) };
+							if (index.notNil) { gui.fileType.value_(index + 8) } { gui.fileType.value_(11) };
 						},
 						"w64", {
 							index = validHeaders.w64.indexOf(this.headerFormat);
-							if (index.notNil) { fileType.value_(index + 12) } { fileType.value_(15) };
+							if (index.notNil) { gui.fileType.value_(index + 12) } { gui.fileType.value_(15) };
 						},
 						"flac", {
 							index = validHeaders.flac.indexOf(this.headerFormat);
-							if (index.notNil) { fileType.value_(index + 16) } { fileType.value_(17) };
+							if (index.notNil) { gui.fileType.value_(index + 16) } { gui.fileType.value_(17) };
 						},
-						{ fileType.value_(3) }
+						{ gui.fileType.value_(3) }
 					)
 				}
 			};
 
-			fileType.action_({ |p|
+			gui.fileType.action_({ |p|
 				switch (p.value,
 					0, { this.fileType_("wav"); this.headerFormat_("int16") },
 					1, { this.fileType_("wav"); this.headerFormat_("int24") },
@@ -202,16 +205,8 @@ SNRecorder {
 				}
 			});
 
-			// if (this.speechSupport) {
-			// 	window.view.keyDownAction_({ |...args|
-			// 		if (args[2] == 524288 and: { args[1] === $f }) {
-			// 			fileType.focus
-			// 		}
-			// 	})
-			// };
-
 			chansOffsetText = StaticText(window).string_("ch. offset");
-			chansOffset = NumberBox(window)
+			gui.chansOffset = NumberBox(window)
 			.value_(this.channelOffset)
 			.clipLo_(0)
 			.step_(1)
@@ -224,19 +219,14 @@ SNRecorder {
 			});
 
 			if (this.speechSupport) {
-				chansOffset.focusGainedAction_({ |ch|
+				gui.chansOffset.focusGainedAction_({ |ch|
 					var sentence = "channel offset: %".format(ch.value.asInteger);
 					this.prSpeak(sentence);
-				});
-				// window.view.keyDownAction_({ |...args|
-				// 	if (args[2] == 524288 and: { args[1] === $i }) {
-				// 		chansOffset.focus
-				// 	}
-				// })
+				})
 			};
 
 			nChansText = StaticText(window).string_("numchans.");
-			nChans = NumberBox(window)
+			gui.nChans = NumberBox(window)
 			.value_(this.recorderNChans)
 			.clipLo_(1)
 			.step_(1)
@@ -245,19 +235,14 @@ SNRecorder {
 			});
 
 			if (this.speechSupport) {
-				nChans.focusGainedAction_({ |n|
+				gui.nChans.focusGainedAction_({ |n|
 					var sentence = "recording to % channels".format(n.value.asInteger);
 					this.prSpeak(sentence);
-				});
-				// window.view.keyDownAction_({ |...args|
-				// 	if (args[2] == 524288 and: { args[1] === $c }) {
-				// 		nChans.focus
-				// 	}
-				// })
+				})
 			};
 
 			recordNameText = StaticText(window).string_("name");
-			recordName = TextField(window)
+			gui.recordName = TextField(window)
 			.string_(this.recordingName)
 			.action_({ |t|
 				this.recordingName_(t.string);
@@ -268,7 +253,7 @@ SNRecorder {
 			});
 
 			if (this.speechSupport) {
-				recordName.focusGainedAction_({ |t|
+				gui.recordName.focusGainedAction_({ |t|
 					var sentence = "current recording name %".format(this.recordingName);
 					this.prSpeak(sentence);
 				})
@@ -276,7 +261,7 @@ SNRecorder {
 
 
 			pathText = StaticText(window).string_("store file in");
-			path = TextField(window)
+			gui.path = TextField(window)
 			.string_(this.recordLocation)
 			.action_({ |t|
 				this.recordLocation_(t.string);
@@ -287,13 +272,13 @@ SNRecorder {
 			});
 
 			if (this.speechSupport) {
-				path.focusGainedAction_({ |t|
+				gui.path.focusGainedAction_({ |t|
 					var sentence = "recording will be written to %".format(this.recordLocation);
 					this.prSpeak(sentence);
 				})
 			};
 
-			preListenButton = Button(window)
+			gui.preListenButton = Button(window)
 			.states_([
 				["PRELISTEN", Color.white, Color.blue],
 				["PRELISTENING", Color.black, Color.yellow]
@@ -315,7 +300,7 @@ SNRecorder {
 
 			if (this.speechSupport) {
 				var sentence;
-				preListenButton.focusGainedAction_({ |b|
+				gui.preListenButton.focusGainedAction_({ |b|
 					switch (b.value,
 						0, {
 							sentence = "start clipping warning button";
@@ -328,21 +313,21 @@ SNRecorder {
 				})
 			};
 
-			startStop = Button(window)
+			gui.startStop = Button(window)
 			.states_([
 				["START", Color.black, Color.green],
 				["STOP", Color.white, Color.red]
 			])
 			.action_({ |b|
-				this.prStartStopRecording(b.value, recordName, nChans, path, myServers, myServer);
+				this.prStartStopRecording(b.value, gui.recordName, gui.nChans, gui.path, myServers, gui.myServer);
 			})
 			.keyDownAction_({ |...args|
 				if (args.last == 16777220) {
 					if (isRecording) {
-						this.prStartStopRecording(0, recordName, nChans, path, myServers, myServer);
+						this.prStartStopRecording(0, gui.recordName, gui.nChans, gui.path, myServers, gui.myServer);
 						args[0].value_(0);
 					} {
-						this.prStartStopRecording(1, recordName, nChans, path, myServers, myServer);
+						this.prStartStopRecording(1, gui.recordName, gui.nChans, gui.path, myServers, gui.myServer);
 						args[0].value_(1);
 					}
 				}
@@ -351,7 +336,7 @@ SNRecorder {
 
 			if (this.speechSupport) {
 				var sentence;
-				startStop.focusGainedAction_({ |b|
+				gui.startStop.focusGainedAction_({ |b|
 					switch (b.value,
 						0, {
 							sentence = "start recording button";
@@ -364,23 +349,40 @@ SNRecorder {
 				})
 			};
 
+			gui.do { |el|
+				el.keyDownAction_(el.keyDownAction.addFunc { |...args|
+					if (args[2].isAlt) {
+						switch(args[1])
+						{ $s } { gui.stopWatch.focus }
+						{ $e } { gui.myServer.focus }
+						{ $f } { gui.fileType.focus }
+						{ $c } { gui.chansOffset.focus }
+						{ $d } { gui.nChans.focus }
+						{ $n } { gui.recordName.focus }
+						{ $p } { gui.path.focus }
+						{ $i } { gui.preListenButton.focus }
+						{ $r } { gui.startStop.focus }
+					}
+				})
+			};
+
 			window.layout_(VLayout(
-				HLayout(stopWatch),
+				HLayout(gui.stopWatch),
 				HLayout(
-					VLayout(myServerText, myServer),
-					VLayout(fileTypeText, fileType),
-					VLayout(chansOffsetText, chansOffset),
-					VLayout(nChansText, nChans),
-					VLayout(recordNameText, recordName)
+					VLayout(myServerText, gui.myServer),
+					VLayout(fileTypeText, gui.fileType),
+					VLayout(chansOffsetText, gui.chansOffset),
+					VLayout(nChansText, gui.nChans),
+					VLayout(recordNameText, gui.recordName)
 				),
-				HLayout(pathText, path, preListenButton, startStop)
+				HLayout(pathText, gui.path, gui.preListenButton, gui.startStop)
 			));
 		} {
 			window.front;
 		};
 
 		SynthDescLib.all[\snSynthDefs][\snRecorder] ?? {
-			this.setSynthDef(myServers[myServer.value]);
+			this.setSynthDef(myServers[gui.myServer.value]);
 		};
 	}
 
@@ -443,7 +445,7 @@ SNRecorder {
 					inf.do{ |i|
 						timeString = i.asTimeString(1)[..7];
 						if (window.notNil and:{ window.isClosed.not }) {
-							stopWatch.string_(timeString).stringColor_(Color.red);
+							gui.stopWatch.string_(timeString).stringColor_(Color.red);
 						};
 						1.wait;
 					}
@@ -458,8 +460,8 @@ SNRecorder {
 		currentRecordingPath = nil;
 		timeRecRoutine.reset.stop;
 		if (window.notNil and: { window.isClosed.not }) {
-			stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
-			startStop.value_(isRecording.not.binaryValue);
+			gui.stopWatch.string_("WAITING").stringColor_(Color.green).font_(Font("Andale Mono", 100));
+			gui.startStop.value_(isRecording.not.binaryValue);
 		};
 		recBuffer !? {
 			recBuffer.close({ |buf| buf.freeMsg });
