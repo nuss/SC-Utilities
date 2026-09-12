@@ -1,17 +1,19 @@
 Taskset {
-	classvar <>core = 1;
+	classvar <>core = 1, <>enabled = true;
 
 	*initClass {
 		Class.initClassTree(Server);
 		Class.initClassTree(ServerBoot);
-		ServerBoot.add({ this.setServerCPU }, \default);
+		StartUp.add {
+			if (this.enabled) {
+				ServerBoot.add({ this.setServerCPU(core: this.core) }, \default);
+			}
+		}
 	}
 
-
-
-	*setServerCPU { |server(Server.default), argCore|
+	*setServerCPU { |server(Server.default), core = 1|
 		if (core.notNil) {
-			"taskset -cp % %".format(argCore ? this.core, server.pid).unixCmd
+			"taskset -cp % %".format(core, server.pid).unixCmd
 		} {
 			"taskset -cp %".format(server.pid).unixCmd
 		}
