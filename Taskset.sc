@@ -1,12 +1,12 @@
 Taskset {
-	classvar <>core = 1, <>enabled = true;
+	classvar <>core = 1, <>enabled = true, <>server;
 
 	*initClass {
 		Class.initClassTree(Server);
 		Class.initClassTree(ServerBoot);
 		StartUp.add {
 			if (this.enabled) {
-				ServerBoot.add({ this.setServerCPU(core: this.core) }, \default);
+				ServerBoot.add({ this.setServerCPU(this.server ? Server.default, this.core) }, \default);
 			}
 		}
 	}
