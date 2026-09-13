@@ -11,7 +11,10 @@ Taskset {
 		}
 	}
 
-	*setServerCPU { |server(Server.default), core = 1|
+	*setServerCPU { |server(Server.default), core|
+		if (server.serverRunning.not) {
+			"Please boot server before trying to get or set the CPU core(s) it's supposed to run on.".warn
+		};
 		if (core.notNil) {
 			"taskset -cp % %".format(core, server.pid).unixCmd
 		} {
